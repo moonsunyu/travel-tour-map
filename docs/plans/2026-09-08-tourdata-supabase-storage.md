@@ -90,6 +90,16 @@ T_YEOSU_POPULAR_SPOT (180행 = 6파일 × 30행)
 - `AGE_GROUP='20'`으로 필터링해 30행, 비율 내림차순 정렬이 원본 CSV 순위와 일치하는지 확인
 - 스크립트 재실행 후 행 수가 그대로 180인지 확인 (중복 insert 없음 = upsert 정상 동작)
 
+## 10. 추가: 프론트엔드 직접 조회 준비 (2026-09-08 후속)
+
+프론트(Next.js)가 별도 백엔드 API 없이 `supabase-js`로 `T_YEOSU_POPULAR_SPOT`을 직접 조회하는
+구조로 결정됨. 이를 위해:
+
+- `supabase/ddl/policies/T_YEOSU_POPULAR_SPOT_policies.sql` — RLS 활성화 + 공개 SELECT 정책 추가 (Supabase SQL Editor에서 수동 실행 필요)
+- `docs/guides/yeosu-popular-spot-query.md` — 조회 쿼리 예시(전체/연령대별) 문서화
+
+실제 Next.js 페이지 UI 구현은 이번 범위 밖 (frontend/ 스캐폴딩 이후 별도 계획).
+
 ## 9. 확인 필요 사항 (해결됨)
 
 1. ~~`scripts/data/raw/`로 이동하는 것에 동의하는지~~ → 승인됨, 이동 완료
