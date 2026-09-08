@@ -73,3 +73,8 @@ Thumbs.db
 *.log
 .cache/
 tmp/
+.claude/
+venv/
+.env
+__pycache__/
+*.pyc
