@@ -1,0 +1,75 @@
+# ===================================
+# 환경변수 / 시크릿 (절대 커밋 금지)
+# ===================================
+.env
+.env.local
+.env.*.local
+scripts/.env
+frontend/.env.local
+**/*.pem
+**/*.key
+service-account*.json
+
+# ===================================
+# Frontend (Next.js / Node.js)
+# ===================================
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.vercel/
+frontend/*.tsbuildinfo
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnpm-debug.log*
+
+# ===================================
+# Python (데이터 수집 스크립트)
+# ===================================
+scripts/venv/
+scripts/__pycache__/
+scripts/**/__pycache__/
+scripts/*.pyc
+scripts/.pytest_cache/
+scripts/*.egg-info/
+scripts/.ipynb_checkpoints/
+
+# 수집한 원본 데이터 (용량 크고, 팀원마다 재수집 가능해야 하므로 커밋 제외)
+scripts/data/raw/
+scripts/data/*.csv
+scripts/data/*.json
+!scripts/data/.gitkeep
+
+# ===================================
+# Supabase
+# ===================================
+supabase/.branches/
+supabase/.temp/
+supabase/logs/
+
+# ===================================
+# 문서 작업 파일 (한글/오피스 임시파일)
+# ===================================
+~$*.hwp
+~$*.docx
+~$*.pptx
+*.hwp.lock
+
+# ===================================
+# OS / 에디터
+# ===================================
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# ===================================
+# 로그 / 임시 파일
+# ===================================
+*.log
+.cache/
+tmp/
