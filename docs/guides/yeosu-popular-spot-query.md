@@ -38,6 +38,41 @@ function getPopularSpotsByAge(ageGroup: '20' | '30' | '40' | '50' | '60' | '전�
 }
 ```
 
+## ⚠️ 1000행 넘는 전체 조회 (페이지네이션)
+
+PostgREST(Supabase가 쓰는 API 계층)는 **한 번의 요청에 기본 최대 1000행**만 돌려준다. `T_YEOSU_POPULAR_SPOT`(180행)이나
+`CENTER_SPOT_ID`로 필터링한 `T_YEOSU_RELATED_SPOT`(최대 50행) 조회는 이 한도에 안 걸리지만,
+`T_YEOSU_RELATED_SPOT`을 **조건 없이 통째로**(1,350행) 가져오는 것처럼 1000행을 넘을 수 있는 조회는
+아무 표시 없이 앞 1000행만 잘려서 돌아온다 — 에러가 안 나서 알아채기 어렵다 (실제로 이 프로젝트
+검증 작업 중 이 문제로 27개 중 20개 관광지만 잡히는 걸 발견한 적이 있다).
+
+`.range(from, to)`로 1000행씩 나눠 반복 요청하면 안전하다:
+
+```ts
+async function fetchAllRows<T>(table: string, select: string, pageSize = 1000): Promise<T[]> {
+  const all: T[] = []
+  let start = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(select)
+      .range(start, start + pageSize - 1)
+    if (error) throw error
+    all.push(...(data as T[]))
+    if (data.length < pageSize) break
+    start += pageSize
+  }
+  return all
+}
+
+// 예: T_YEOSU_RELATED_SPOT 1,350행 전체를 잘림 없이 가져오기
+const allRelatedSpots = await fetchAllRows('T_YEOSU_RELATED_SPOT', 'CENTER_SPOT_ID, RANK, RELATED_SPOT_NAME')
+```
+
+`CENTER_SPOT_ID`로 필터링해서 특정 관광지 하나의 연관관광지만(최대 50행) 가져오는 일반적인 경우엔
+이 함수가 필요 없다 — 위 "예를 들어서 인기관광지 하나 선택" 절의 단순 `.eq()` 쿼리로 충분하다.
+이건 필터 없이 테이블 전체를 다뤄야 하는 관리자 화면·데이터 검증 스크립트 같은 경우에만 쓴다.
+
 ## 참고
 
 - 테이블/컬럼명이 대문자라 쿼리 문자열에서도 대소문자를 정확히 맞춰야 한다 (`db-development-postgres` 표준 — 식별자가 quoted-uppercase로 생성됨).
