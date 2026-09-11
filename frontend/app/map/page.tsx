@@ -1,4 +1,3 @@
-// app/map/page.tsx
 'use client';
 import { useEffect, useState } from 'react';
 import KakaoMap from '@/components/KakaoMap';
@@ -10,7 +9,11 @@ type Spot = {
   lat: number;
   lng: number;
   category: string;
-  ageGroup: string[];
+};
+
+const REGION_DB_VALUE: Record<'강원' | '여수', string> = {
+  강원: '강원도',
+  여수: '여수',
 };
 
 export default function MapPage() {
@@ -22,24 +25,34 @@ export default function MapPage() {
     async function fetchSpots() {
       setLoading(true);
       const { data, error } = await supabase
-        .from('T_GANGWON_POPULAR_SPOT')          // ← 실제 테이블명으로 수정
-        .select('*')
-        .eq('REGION', region);
+        .from('T_GANGWON_POPULAR_SPOT')
+        .select('SPOT_ID, SPOT_NAME, LATITUDE, LONGITUDE, CATEGORY')
+        .eq('REGION', REGION_DB_VALUE[region])
+        .not('LATITUDE', 'is', null);
 
       if (error) {
         console.error('데이터 조회 실패:', error);
         setSpots([]);
-      } else {
-        const mapped = data.map((row) => ({
-          id: row.SPOT_ID,
-          name: row.SPOT_NAME,
-          lat: row.LAT,
-          lng: row.LNG,
-          category: row.CATEGORY,
-          ageGroup: row.AGE_GROUP,
-        }));
-        setSpots(mapped);
+        setLoading(false);
+        return;
       }
+
+      // SPOT_ID 기준으로 중복 제거 (같은 장소가 연령대별로 여러 행 존재하므로 첫 번째 것만 채택)
+      const uniqueMap = new Map<string, Spot>();
+      data.forEach((row) => {
+        if (!uniqueMap.has(row.SPOT_ID)) {
+          uniqueMap.set(row.SPOT_ID, {
+            id: row.SPOT_ID,
+            name: row.SPOT_NAME,
+            lat: row.LATITUDE,
+            lng: row.LONGITUDE,
+            category: row.CATEGORY,
+          });
+        }
+      });
+
+      setSpots(Array.from(uniqueMap.values()));
+      console.log('불러온 spots 개수:', uniqueMap.size);
       setLoading(false);
     }
 
@@ -54,7 +67,6 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* 지역 전환 버튼 (임시 테스트용) */}
       <div className="absolute top-4 left-4 z-10 flex gap-2">
         <button onClick={() => setRegion('강원')} className="bg-white px-4 py-2 rounded-full shadow">강원</button>
         <button onClick={() => setRegion('여수')} className="bg-white px-4 py-2 rounded-full shadow">여수</button>

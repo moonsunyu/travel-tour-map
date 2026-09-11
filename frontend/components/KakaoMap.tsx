@@ -7,7 +7,6 @@ type Spot = {
   lat: number;
   lng: number;
   category: string;
-  ageGroup: string[];
 };
 
 export default function KakaoMap({ spots, region }: { spots: Spot[]; region: '강원' | '여수' }) {
