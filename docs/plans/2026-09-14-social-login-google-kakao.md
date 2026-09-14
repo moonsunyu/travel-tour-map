@@ -71,3 +71,13 @@ frontend/app/auth/callback/route.ts     -- GET: OAuth 콜백 — code를 세션�
 - `frontend/app/api/auth/google/route.ts`
 - `frontend/app/api/auth/kakao/route.ts`
 - `frontend/app/auth/callback/route.ts`
+
+## 7. 추가: 카카오 이메일 권한 보류 (2026-09-14 후속)
+
+카카오 "이메일(`account_email`)" 동의항목은 비즈니스 앱 인증(사업자 등록 심사) 없이는 활성화할 수
+없음을 확인. 닉네임·프로필 이미지만 우선 받고, 이메일 없이 카카오 로그인을 먼저 동작시키기로 결정.
+
+- **영향**: 카카오로 로그인한 사용자는 `email`이 비어있을 수 있음. 구글/이메일 로그인 사용자는
+  `email`이 항상 있음 — 이 차이를 회원 프로필·화면 로직에서 나중에 고려해야 함 (이번 범위 밖,
+  UI/프로필 설계 시 반영).
+- 비즈니스 앱 인증은 필요해지면 별도로 신청 (이 계획서 범위 밖).
