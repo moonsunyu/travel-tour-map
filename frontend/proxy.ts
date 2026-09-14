@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // "로그인 유지": 매 요청마다 만료된 Access Token을 Refresh Token으로 자동 갱신한다.
 // 이게 없으면 Access Token(기본 1시간)이 만료된 뒤에는 재로그인 없이는 세션이 끊긴다.
 // (Supabase 공식 Next.js SSR 미들웨어 패턴)
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {

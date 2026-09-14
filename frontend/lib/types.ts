@@ -4,6 +4,12 @@ export interface ApiResponse<T = unknown> {
   message: string;
 }
 
+// authClient가 실제 fetch의 HTTP 상태코드까지 얹어 반환하는 형태.
+// 200/401/404처럼 같은 실패라도 상태코드로 분기해야 하는 화면 로직(초기 로그인 판별 등)에 쓴다.
+export interface ApiResult<T = unknown> extends ApiResponse<T> {
+  status: number;
+}
+
 export type TermCode = "TOS" | "PRIVACY" | "LBS";
 
 export interface TermAgreement {

@@ -1,5 +1,5 @@
 import {
-  ApiResponse,
+  ApiResult,
   CompleteSocialSignupRequest,
   LoginRequest,
   NicknameCheckData,
@@ -17,16 +17,23 @@ export const DEFAULT_PROFILE_IMAGE =
   "https://hkndfhdihzchiqxnidat.supabase.co/storage/v1/object/public/profile-images/default.svg";
 
 // 세션은 httpOnly 쿠키로 관리되므로 별도 토큰을 안 실어보내도 동일 출처 요청엔 자동으로 실린다.
-async function request<T>(path: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+// status를 함께 반환해서, 같은 실패라도 401(로그인 필요)과 404(프로필 없음) 등을 화면에서 구분할 수 있게 한다.
+async function request<T>(path: string, options: RequestInit = {}): Promise<ApiResult<T>> {
   try {
     const isFormData = options.body instanceof FormData;
     const res = await fetch(path, {
       ...options,
       headers: isFormData ? options.headers : { "Content-Type": "application/json", ...options.headers },
     });
-    return (await res.json()) as ApiResponse<T>;
+    const json = await res.json();
+    return { ...json, status: res.status } as ApiResult<T>;
   } catch {
-    return { success: false, data: null, message: "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요." };
+    return {
+      success: false,
+      data: null,
+      message: "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+      status: 0,
+    };
   }
 }
 
