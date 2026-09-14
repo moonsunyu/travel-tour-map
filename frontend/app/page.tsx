@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 
 export default function Home() {
-  const { user, openAuthModal } = useAuth();
+  const { user, isLoading, openAuthModal } = useAuth();
 
   return (
     <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 flex flex-col justify-center">
       <div className="py-20 sm:py-28 flex flex-col items-center justify-center text-center">
-        {!user ? (
+        {isLoading ? (
+          <div className="w-6 h-6 border-2 border-slate-200 border-t-sky-600 rounded-full animate-spin" />
+        ) : !user ? (
           <div className="space-y-4 max-w-md px-4">
             <div className="w-16 h-16 mx-auto rounded-3xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100 shadow-xs">
               <Compass className="w-8 h-8" />
