@@ -118,8 +118,12 @@ localStorage 세션 대신, 앱이 뜰 때마다 `GET /api/profile`을 호출해
 
 약 15개 컴포넌트 신규 생성 + `layout.tsx`/`page.tsx` 수정 + `package.json`(lucide-react 추가).
 큰 작업이라 아래 순서로 나눠 커밋:
-1. 타입/데이터/authClient 기반 레이어
-2. AuthContext + 레이아웃(Navbar/Footer) 조립
-3. 인증 모달 5종(Login/Signup/SocialComplete/PasswordReset/TermsDetail)
-4. 메인 페이지 + `/reset-password` 페이지
-5. 마이페이지(`/mypage`)
+1. ✅ 타입/데이터/authClient 기반 레이어
+2. ✅ AuthContext + 레이아웃(Navbar/Footer) 조립 (부수 정리: `middleware.ts` → `proxy.ts`)
+3. ✅ 인증 모달 5종(Login/Signup/SocialComplete/PasswordReset/TermsDetail)
+4. ✅ 메인 페이지 + `/reset-password` 페이지
+5. ✅ 마이페이지(`/mypage`, 북마크 제외) — `isLoading` 반영해 새로고침 시 깜빡임도 수정
+
+전체 완료. `tsc`/`lint`/`build` 전부 통과, Node 스크립트로 회원가입 이후 전체 마이페이지 흐름까지
+end-to-end 재확인. 실제 브라우저 클릭 흐름(모달 애니메이션, 구글 로그인 실제 클릭 등)은 사용자
+확인 필요.
