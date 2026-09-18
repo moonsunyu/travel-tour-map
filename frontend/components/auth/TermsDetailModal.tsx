@@ -52,7 +52,6 @@ export const TermsDetailModal: React.FC<Props> = ({ code, onClose }) => {
                   {term.required ? "필수" : "선택"}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">{term.summary}</p>
             </div>
           </div>
           <button
@@ -74,7 +73,7 @@ export const TermsDetailModal: React.FC<Props> = ({ code, onClose }) => {
             onClick={onClose}
             className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-xl transition-colors cursor-pointer"
           >
-            확인 및 닫기
+            닫기
           </button>
         </div>
       </div>

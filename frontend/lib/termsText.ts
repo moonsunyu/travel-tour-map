@@ -2,7 +2,6 @@ export interface TermDefinition {
   code: "TOS" | "PRIVACY" | "LBS";
   title: string;
   required: boolean;
-  summary: string;
   fullText: string;
 }
 
@@ -11,7 +10,6 @@ export const TERMS_DEFINITIONS: Record<"TOS" | "PRIVACY" | "LBS", TermDefinition
     code: "TOS",
     title: "홀로트립 서비스 이용약관",
     required: true,
-    summary: "홀로트립의 혼여행 정보 제공, 커뮤니티, 추천 서비스 이용에 관한 기본 권리와 의무를 규정합니다.",
     fullText: `제1조 (목적)
 본 약관은 홀로트립(이하 "회사")이 제공하는 혼여행 전문 플랫폼 서비스(이하 "서비스")의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.
 
@@ -31,7 +29,6 @@ export const TERMS_DEFINITIONS: Record<"TOS" | "PRIVACY" | "LBS", TermDefinition
     code: "PRIVACY",
     title: "개인정보 수집 및 이용 동의",
     required: true,
-    summary: "회원가입, 본인확인, 서비스 제공 및 부정 이용 방지를 위한 최소한의 개인정보를 수집합니다.",
     fullText: `1. 개인정보 수집 및 이용 목적
 - 회원 식별, 가입 의사 확인, 본인 인증
 - 혼여행 추천 서비스 제공 및 내 보관함 동기화
@@ -48,9 +45,8 @@ export const TERMS_DEFINITIONS: Record<"TOS" | "PRIVACY" | "LBS", TermDefinition
   },
   LBS: {
     code: "LBS",
-    title: "위치기반 서비스 이용약관 (선택)",
+    title: "위치기반 서비스 이용약관",
     required: false,
-    summary: "현재 위치 기반 내 주변 1인 식당, 안심 숙소, 혼여행 명소 추천 및 길안내에 활용됩니다.",
     fullText: `제1조 (목적)
 본 약관은 회사가 제공하는 위치기반서비스와 관련하여 회사와 개인위치정보주체 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.
 
