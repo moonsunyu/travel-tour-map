@@ -76,7 +76,7 @@ export const SearchSidebar: React.FC = () => {
       if (selectedCategory !== "전체" && place.category !== selectedCategory) return false;
       if (soloOnly && !place.soloFriendly) return false;
       if (ageGroup !== "전체" && place.ageGroup !== "전체" && place.ageGroup !== ageGroup) return false;
-      if (trimmedQuery && !place.name.includes(trimmedQuery) && !place.tags.some((t) => t.includes(trimmedQuery))) {
+      if (trimmedQuery && !place.name.includes(trimmedQuery)) {
         return false;
       }
       return true;
@@ -304,16 +304,6 @@ export const SearchSidebar: React.FC = () => {
                       <span className="text-amber-500 font-semibold">★ {place.rating.toFixed(2)}</span>
                       <span> (리뷰 {place.reviewCount}) · 도보 {place.walkMinutes}분</span>
                     </p>
-                    <div className="flex flex-wrap gap-1 pt-0.5">
-                      {place.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
                   </div>
 
                   <button

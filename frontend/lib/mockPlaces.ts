@@ -16,7 +16,6 @@ export interface MockPlace {
   walkMinutes: number;
   soloFriendly: boolean;
   ageGroup: AgeGroupFilter;
-  tags: string[];
 }
 
 // 지역 탭에 보여줄 "전체 등록 장소 수" — 검색 결과 개수와는 별개의 참고용 총계(더미 값).
@@ -36,7 +35,6 @@ export const MOCK_PLACES: MockPlace[] = [
     walkMinutes: 5,
     soloFriendly: true,
     ageGroup: "20",
-    tags: ["혼밥 1인석 완비", "20대선호", "오션뷰석"],
   },
   {
     id: "gw-2",
@@ -48,7 +46,6 @@ export const MOCK_PLACES: MockPlace[] = [
     walkMinutes: 15,
     soloFriendly: true,
     ageGroup: "전체",
-    tags: ["혼행족 선호식당"],
   },
   {
     id: "gw-3",
@@ -60,7 +57,6 @@ export const MOCK_PLACES: MockPlace[] = [
     walkMinutes: 3,
     soloFriendly: false,
     ageGroup: "전체",
-    tags: ["도보코스", "사진명소"],
   },
   {
     id: "ys-1",
@@ -72,7 +68,6 @@ export const MOCK_PLACES: MockPlace[] = [
     walkMinutes: 8,
     soloFriendly: true,
     ageGroup: "30",
-    tags: ["혼밥 가능", "야경맛집"],
   },
   {
     id: "ys-2",
@@ -84,6 +79,5 @@ export const MOCK_PLACES: MockPlace[] = [
     walkMinutes: 12,
     soloFriendly: false,
     ageGroup: "전체",
-    tags: ["산책코스", "일몰명소"],
   },
 ];
