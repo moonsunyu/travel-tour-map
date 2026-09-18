@@ -7,8 +7,6 @@ import {
   Edit2,
   Lock,
   LogOut,
-  Shield,
-  UserCheck,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -29,8 +27,6 @@ export const MyPage: React.FC = () => {
     checkNicknameAvailability,
     openTermsDetail,
   } = useAuth();
-
-  const [activeTab, setActiveTab] = useState<"profile" | "terms">("profile");
 
   const [isEditingNickname, setIsEditingNickname] = useState(false);
   const [newNickname, setNewNickname] = useState(user?.nickname || "");
@@ -329,105 +325,33 @@ export const MyPage: React.FC = () => {
             </button>
           </div>
         </div>
-
-        {/* Tab Navigation */}
-        <div className="flex items-center gap-2 mt-8 pt-4 border-t border-slate-100">
-          <button
-            onClick={() => setActiveTab("profile")}
-            className={`px-4 py-2 text-sm font-semibold rounded-xl transition-all cursor-pointer ${
-              activeTab === "profile" ? "bg-slate-900 text-white shadow-xs" : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-            }`}
-          >
-            계정 및 보안 설정
-          </button>
-          <button
-            onClick={() => setActiveTab("terms")}
-            className={`px-4 py-2 text-sm font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeTab === "terms" ? "bg-slate-900 text-white shadow-xs" : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-            }`}
-          >
-            <Shield className="w-4 h-4" />
-            <span>동의 약관 내역</span>
-          </button>
-        </div>
       </div>
 
-      {activeTab === "profile" && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white rounded-2xl p-6 border border-slate-200/80 space-y-4 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
-                  <UserCheck className="w-5 h-5 text-sky-600" />
-                  <span>혼여행자 프로필 정보</span>
-                </h3>
-                <span className="text-xs text-slate-400">인증 계정</span>
-              </div>
-
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-500">등록된 이메일</span>
-                  <span className="font-semibold text-slate-800">{user.email}</span>
-                </div>
-                <div className="flex justify-between py-2">
-                  <span className="text-slate-500">활동 닉네임</span>
-                  <span className="font-semibold text-slate-800">{user.nickname}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-6 border border-slate-200/80 space-y-4 shadow-2xs flex flex-col justify-between">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
-                    <Lock className="w-5 h-5 text-amber-600" />
-                    <span>보안 및 비밀번호 관리</span>
-                  </h3>
-                  <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
-                    안전
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  소중한 혼여행 기록과 개인정보를 안전하게 보호하기 위해 주기적으로 비밀번호를 변경해 주세요. (영문,
-                  숫자, 특수문자 조합 8자 이상)
-                </p>
-              </div>
-
-              <button
-                id="open-password-change-btn"
-                type="button"
-                onClick={() => setShowPasswordModal(true)}
-                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-sm rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2"
-              >
-                <Lock className="w-4 h-4 text-slate-600" />
-                <span>비밀번호 변경하기</span>
-              </button>
-            </div>
+      <div className="space-y-6">
+        <div className="bg-white rounded-2xl p-6 border border-slate-200/80 space-y-4 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+              <Lock className="w-5 h-5 text-amber-600" />
+              <span>보안 및 비밀번호 관리</span>
+            </h3>
+            <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
+              안전
+            </span>
           </div>
-
-          <div className="bg-rose-50/40 rounded-2xl p-6 border border-rose-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <h4 className="text-sm font-bold text-rose-900 flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-rose-600" />
-                <span>회원 탈퇴</span>
-              </h4>
-              <p className="text-xs text-rose-700/80 leading-relaxed">
-                탈퇴 시 프로필 이미지, 저장된 설정이 즉시 파기되며 되돌릴 수 없습니다.
-              </p>
-            </div>
-            <button
-              id="open-delete-account-btn"
-              type="button"
-              onClick={() => setShowDeleteModal(true)}
-              className="px-4 py-2 bg-white hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer shrink-0"
-            >
-              회원 탈퇴하기
-            </button>
-          </div>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            소중한 혼여행 기록과 개인정보를 안전하게 보호하기 위해 주기적으로 비밀번호를 변경해 주세요.
+          </p>
+          <button
+            id="open-password-change-btn"
+            type="button"
+            onClick={() => setShowPasswordModal(true)}
+            className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-sm rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2"
+          >
+            <Lock className="w-4 h-4 text-slate-600" />
+            <span>비밀번호 변경하기</span>
+          </button>
         </div>
-      )}
 
-      {activeTab === "terms" && (
         <div className="bg-white rounded-2xl p-6 border border-slate-200 space-y-4">
           <div className="space-y-1">
             <h3 className="font-bold text-slate-900 text-base">서비스 약관 동의 내역</h3>
@@ -492,7 +416,27 @@ export const MyPage: React.FC = () => {
             </div>
           </div>
         </div>
-      )}
+
+        <div className="bg-rose-50/40 rounded-2xl p-6 border border-rose-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h4 className="text-sm font-bold text-rose-900 flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 text-rose-600" />
+              <span>회원 탈퇴</span>
+            </h4>
+            <p className="text-xs text-rose-700/80 leading-relaxed">
+              탈퇴 시 프로필 이미지, 저장된 설정이 즉시 파기되며 되돌릴 수 없습니다.
+            </p>
+          </div>
+          <button
+            id="open-delete-account-btn"
+            type="button"
+            onClick={() => setShowDeleteModal(true)}
+            className="px-4 py-2 bg-white hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer shrink-0"
+          >
+            회원 탈퇴하기
+          </button>
+        </div>
+      </div>
 
       {/* Password Change Modal */}
       {showPasswordModal && (
@@ -611,7 +555,6 @@ export const MyPage: React.FC = () => {
             </div>
 
             <div className="space-y-2 text-xs text-slate-600 leading-relaxed bg-rose-50/70 p-4 rounded-xl border border-rose-100">
-              <p className="font-bold text-rose-900">주의사항:</p>
               <ul className="list-disc pl-4 space-y-1">
                 <li>프로필 사진(Storage) 및 개인정보가 완전히 파기됩니다.</li>
                 <li>소셜 로그인 연동 정보 또한 즉시 해제됩니다.</li>
@@ -622,7 +565,7 @@ export const MyPage: React.FC = () => {
             <div className="space-y-2">
               <label className="text-xs font-semibold text-slate-700 block">
                 확인을 위해 아래 입력창에 <strong className="text-rose-600 font-bold">탈퇴합니다</strong>를 정확히
-                입력해주세요:
+                입력해주세요.
               </label>
               <input
                 id="delete-confirm-input"
@@ -649,7 +592,7 @@ export const MyPage: React.FC = () => {
                 disabled={deleteConfirmText !== "탈퇴합니다" || isDeleting}
                 className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {isDeleting ? "탈퇴 처리 중..." : "영구 탈퇴 확인"}
+                {isDeleting ? "탈퇴 처리 중..." : "탈퇴 확인"}
               </button>
             </div>
           </div>
