@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, ArrowRight, Lock, Mail, Sparkles } from "lucide-react";
+import { AlertCircle, ArrowRight, Lock, Mail } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 
@@ -58,9 +58,6 @@ export const LoginForm: React.FC<Props> = ({ onSwitchToSignup, onSwitchToReset }
   return (
     <div id="login-form-container" className="space-y-5">
       <div className="text-center space-y-1.5">
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-50 border border-sky-100 text-sky-700 text-xs font-medium">
-          <Sparkles className="w-3.5 h-3.5" /> 오롯이 나에게 집중하는 혼여행
-        </span>
         <h2 className="text-2xl font-bold tracking-tight text-slate-900">홀로트립 로그인</h2>
         <p className="text-sm text-slate-500">나만의 안심 혼여행 공간으로 들어가세요</p>
       </div>

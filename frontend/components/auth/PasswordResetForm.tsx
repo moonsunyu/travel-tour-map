@@ -77,8 +77,7 @@ export const PasswordResetForm: React.FC<Props> = ({ onBackToLogin }) => {
             <span>재설정 메일 발송 완료</span>
           </div>
           <p className="text-xs text-slate-600 leading-relaxed">
-            가입된 계정인 경우 메일함(스팸함 포함)으로 재설정 링크가 도착합니다. 링크를 클릭하면 새 비밀번호를 설정할
-            수 있는 화면으로 이동합니다.
+            링크를 클릭하면 새 비밀번호를 설정할 수 있는 화면으로 이동합니다.
           </p>
         </div>
       ) : (

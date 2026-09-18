@@ -27,8 +27,6 @@ export const AuthModal: React.FC = () => {
           className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden relative max-h-[92vh] flex flex-col animate-in zoom-in-95 duration-200"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="h-1.5 w-full bg-linear-to-r from-sky-500 via-teal-500 to-amber-500" />
-
           <button
             id="auth-modal-close-btn"
             onClick={closeAuthModal}

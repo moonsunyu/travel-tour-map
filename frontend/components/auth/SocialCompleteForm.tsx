@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, ArrowRight, Check, Sparkles, User as UserIcon } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, User as UserIcon } from "lucide-react";
 import { useState } from "react";
 import { validateNickname } from "@/lib/authClient";
 import { useAuth } from "@/context/AuthContext";
@@ -97,11 +97,8 @@ export const SocialCompleteForm: React.FC = () => {
   return (
     <div id="social-complete-container" className="space-y-5">
       <div className="text-center space-y-1.5">
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
-          <Sparkles className="w-3.5 h-3.5" /> Google 소셜 계정 연동 완료
-        </span>
         <h2 className="text-2xl font-bold tracking-tight text-slate-900">혼여행 프로필 완성</h2>
-        <p className="text-sm text-slate-500">홀로트립에서 사용할 닉네임을 설정하고 필수 약관에 동의해주세요</p>
+        <p className="text-sm text-slate-500">닉네임을 설정하고 필수 약관에 동의해주세요</p>
       </div>
 
       {errorMessage && (
