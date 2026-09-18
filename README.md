@@ -24,9 +24,38 @@ cp .env.example .env            # 발급받은 키 채워넣기
 
 작업이 끝나면 반드시 `venv 비활성화(deactivate)` 후 커밋. `venv/` 폴더 자체는 `.gitignore`에 포함되어 있어 커밋되지 않음.
 
+### 프론트엔드 실행 (Next.js)
+```bash
+cd frontend
+npm install
+copy .env.example .env.local    # Windows. macOS/Linux는 cp .env.example .env.local
+```
+
+`.env.local`을 열어 Supabase 프로젝트 값을 채운다 (대시보드 → 프로젝트 선택 → Settings → API).
+
+```
+NEXT_PUBLIC_SUPABASE_URL=       # Project URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=  # Project API keys의 anon public 키
+SUPABASE_SERVICE_ROLE_KEY=      # Project API keys의 service_role 키 (scripts/.env와 동일 값)
+```
+
+값을 채운 뒤 개발 서버 실행:
+```bash
+npm run dev
+```
+[http://localhost:3000](http://localhost:3000) 접속해서 확인.
+
+> **Windows에서 `Turbopack is not supported... Only WebAssembly (WASM) bindings were loaded` 에러가 나면**
+> `@next/swc-win32-x64-msvc` 네이티브 바이너리가 설치 중 손상된 것(백신 격리 등 원인). 아래로 재설치:
+> ```bash
+> rmdir /s /q node_modules
+> npm cache clean --force
+> npm install
+> ```
+
 ## 환경변수 관리
 
-API 키는 **절대 git에 커밋 금지** .env에 발급받은 키를 넣어 로컬에서만 사용.
+`scripts/.env`(Python 데이터 수집용)와 `frontend/.env.local`(Next.js 앱용)은 서로 다른 파일이며 **둘 다** 각자 채워야 함. 두 파일 모두 `.env.example`을 복사해서 시작하고, API 키는 **절대 git에 커밋 금지** — 로컬에서만 사용.
 
 
 ## Git 브랜치 전략
