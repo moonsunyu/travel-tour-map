@@ -3,7 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
+import { SearchSidebar } from "@/components/search/SearchSidebar";
 import { AuthProvider } from "@/context/AuthContext";
+import { SearchSidebarProvider } from "@/context/SearchSidebarContext";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,10 +32,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="min-h-full flex flex-col bg-[#F8F9FA] text-[#1E293B]">
         <AuthProvider>
-          <Navbar />
-          <div className="flex-1 flex flex-col">{children}</div>
-          <AuthModal />
-          <Footer />
+          <SearchSidebarProvider>
+            <Navbar />
+            <div className="flex-1 flex flex-col">{children}</div>
+            <AuthModal />
+            <SearchSidebar />
+            <Footer />
+          </SearchSidebarProvider>
         </AuthProvider>
       </body>
     </html>

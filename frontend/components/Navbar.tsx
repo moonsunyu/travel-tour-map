@@ -1,13 +1,16 @@
 "use client";
 
-import { Compass, LogIn, LogOut, UserPlus } from "lucide-react";
+import { LogIn, LogOut, Menu, UserPlus } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { useSearchSidebar } from "@/context/SearchSidebarContext";
 import { DEFAULT_PROFILE_IMAGE } from "@/lib/authClient";
 
 export const Navbar: React.FC = () => {
   const { user, openAuthModal, logout } = useAuth();
+  const { openSearchSidebar } = useSearchSidebar();
   const pathname = usePathname();
   const router = useRouter();
   const isMyPage = pathname === "/mypage";
@@ -17,21 +20,38 @@ export const Navbar: React.FC = () => {
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 transition-all">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-        {/* Brand Logo */}
-        <Link id="navbar-logo" href="/" className="flex items-center gap-2.5 cursor-pointer text-left group">
-          <div className="w-10 h-10 rounded-2xl bg-linear-to-br from-sky-500 to-teal-600 text-white flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
-            <Compass className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-black text-lg tracking-tight text-slate-900 group-hover:text-sky-600 transition-colors">
-                홀로트립
-              </span>
-              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-sky-100 text-sky-700">혼여행</span>
+        <div className="flex items-center gap-3">
+          {/* Menu Button: 클릭 시 왼쪽 사이드바 오픈 */}
+          <button
+            id="nav-menu-btn"
+            type="button"
+            onClick={openSearchSidebar}
+            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+            title="메뉴"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
+          {/* Brand Logo */}
+          <Link id="navbar-logo" href="/" className="flex items-center gap-2.5 cursor-pointer text-left group">
+            <Image
+              src="/logo.png"
+              alt="홀로트립 로고"
+              width={40}
+              height={40}
+              className="shrink-0 group-hover:scale-105 transition-transform"
+              priority
+            />
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-black text-lg tracking-tight text-slate-900 group-hover:text-sky-600 transition-colors">
+                  혼행 여지도
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 font-medium hidden sm:block">나를 만나는 혼자만의 여정</p>
             </div>
-            <p className="text-[10px] text-slate-400 font-medium hidden sm:block">나를 만나는 혼자만의 여정</p>
-          </div>
-        </Link>
+          </Link>
+        </div>
 
         {/* Right Auth Section: 로그인, 회원가입 버튼 */}
         <div className="flex items-center gap-2">
