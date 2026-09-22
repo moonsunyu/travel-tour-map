@@ -75,3 +75,11 @@ export interface PasswordChangeRequest {
 export interface ProfileImageUploadResponse {
   profileImageUrl: string;
 }
+
+export {};
+
+declare global {
+  interface Window {
+    kakao: any;
+  }
+}

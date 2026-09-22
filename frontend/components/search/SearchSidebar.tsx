@@ -1,14 +1,26 @@
+// components/search/SearchSidebar.tsx
 "use client";
 
 import { BedDouble, ChevronDown, Landmark, MapPin, Search, Star, Utensils, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchSidebar } from "@/context/SearchSidebarContext";
-import { AgeGroupFilter, MOCK_PLACES, PlaceCategory, PlaceRegion, REGION_TOTALS } from "@/lib/mockPlaces";
+import { haversineKm } from "@/lib/geo";
+import {
+  AgeGroupFilter,
+  DbPlace,
+  PlaceCategory,
+  PlaceRegion,
+  ReferenceSpot,
+  extractReferenceSpot,
+  fetchRegionPlaces,
+  fetchRegionTotals,
+  searchAndIntersect,
+  sortByRelation,
+} from "@/lib/places";
 
-// 검색 버튼(세줄바) → 왼쪽에서 열리는 사이드바. 아직 실제 장소 검색 API가 연동되지 않아
-// lib/mockPlaces.ts의 예시 데이터로 지역/카테고리/혼밥여부/나이대 필터와 정렬 UI 흐름만 보여준다.
-// 실제 연동 시 MOCK_PLACES 대신 API 응답을 쓰고, 아래 필터링 로직은 서버 쿼리로 옮기면 된다.
+// 검색 버튼(세줄바) → 왼쪽에서 열리는 사이드바.
+// 실제 카카오맵 검색 + Supabase 데이터 교집합으로 장소를 찾고, 지역/카테고리/혼밥여부/나이대로 필터링한다.
 
 const CATEGORY_OPTIONS: { value: PlaceCategory | "전체"; label: string; icon?: React.ReactNode }[] = [
   { value: "전체", label: "전체" },
@@ -26,29 +38,42 @@ const AGE_GROUP_OPTIONS: { value: AgeGroupFilter; label: string }[] = [
   { value: "60", label: "60대 인기" },
 ];
 
-const REFERENCE_POINT: Record<PlaceRegion, string> = {
-  강원도: "경포호 광장",
-  여수시: "여수 엑스포장",
-};
-
 export const SearchSidebar: React.FC = () => {
   const { isOpen, closeSearchSidebar } = useSearchSidebar();
+
   const [query, setQuery] = useState("");
-  // 입력창에 타이핑하는 것만으로는 필터링하지 않고, 엔터/검색 버튼으로 제출했을 때의
-  // 값만 검색어로 반영한다 (실제 API 연동 시 요청을 매 키 입력마다 안 쏘려는 의도).
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [selectedRegion, setSelectedRegion] = useState<PlaceRegion>("강원도");
   const [selectedCategory, setSelectedCategory] = useState<PlaceCategory | "전체">("전체");
   const [soloOnly, setSoloOnly] = useState(false);
   const [ageGroup, setAgeGroup] = useState<AgeGroupFilter>("전체");
-  const [sortBy, setSortBy] = useState<"거리순" | "연관순위">("연관순위");
+  const [sortBy, setSortBy] = useState<"거리순" | "연관순위">("거리순");
   const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // 지역 전체 장소 풀 (검색 시 이 풀 안에서 교집합을 찾음)
+  const [pool, setPool] = useState<DbPlace[]>([]);
+  const [poolLoading, setPoolLoading] = useState(false);
+
+  // 검색 결과 + 기준점 + 로딩 상태
+  const [results, setResults] = useState<DbPlace[]>([]);
+  const [referenceSpot, setReferenceSpot] = useState<ReferenceSpot | null>(null);
+  const [searching, setSearching] = useState(false);
+
+  // 상단 탭에 표시할 지역별 전체 장소 수
+  const [regionTotals, setRegionTotals] = useState<Record<PlaceRegion, number>>({
+    강원도: 0,
+    여수: 0,
+  });
+
+  const soloToggleDisabled = selectedCategory === "관광명소" || selectedCategory === "숙박";
+
+  // 사이드바 열릴 때 검색창 포커스
   useEffect(() => {
     if (isOpen) inputRef.current?.focus();
   }, [isOpen]);
 
+  // Esc로 닫기
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -57,6 +82,70 @@ export const SearchSidebar: React.FC = () => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, closeSearchSidebar]);
+
+  // 최초 1회, 지역 탭 뱃지 숫자 로드
+  useEffect(() => {
+    fetchRegionTotals().then(setRegionTotals);
+  }, []);
+
+  // 지역 바뀔 때마다 해당 지역의 전체 장소 풀을 새로 로드
+  useEffect(() => {
+    setPoolLoading(true);
+    fetchRegionPlaces(selectedRegion)
+      .then(setPool)
+      .finally(() => setPoolLoading(false));
+  }, [selectedRegion]);
+
+  // 관광명소/숙박 탭으로 옮기면 혼밥 토글 자동 해제
+  useEffect(() => {
+    if (soloToggleDisabled && soloOnly) setSoloOnly(false);
+  }, [selectedCategory]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 검색어/필터/정렬이 바뀔 때마다 결과 재계산 (카카오 검색 + DB 매칭 + 정렬까지)
+  useEffect(() => {
+    if (!submittedQuery || pool.length === 0) {
+      setResults([]);
+      setReferenceSpot(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function run() {
+      setSearching(true);
+      const matched = await searchAndIntersect(submittedQuery, selectedRegion, pool);
+      const ref = await extractReferenceSpot(matched, selectedRegion);
+      if (cancelled) return;
+      setReferenceSpot(ref);
+
+      let filtered = matched.filter((p) => {
+        if (selectedCategory !== "전체" && p.category !== selectedCategory) return false;
+        if (soloOnly && !p.soloFriendly) return false;
+        if (ageGroup !== "전체" && p.ageGroups.length > 0 && !p.ageGroups.includes(ageGroup)) return false;
+        return true;
+      });
+
+      if (ref) {
+        filtered = [...filtered].sort(
+          (a, b) => haversineKm(a.lat, a.lng, ref.lat, ref.lng) - haversineKm(b.lat, b.lng, ref.lat, ref.lng),
+        );
+      }
+
+      if (sortBy === "연관순위" && ref) {
+        filtered = await sortByRelation(filtered, ref, selectedRegion);
+      }
+
+      if (!cancelled) {
+        setResults(filtered);
+        setSearching(false);
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [submittedQuery, pool, selectedRegion, selectedCategory, soloOnly, ageGroup, sortBy]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,24 +158,6 @@ export const SearchSidebar: React.FC = () => {
     inputRef.current?.focus();
   };
 
-  const results = useMemo(() => {
-    const trimmedQuery = submittedQuery;
-    const filtered = MOCK_PLACES.filter((place) => {
-      if (place.region !== selectedRegion) return false;
-      if (selectedCategory !== "전체" && place.category !== selectedCategory) return false;
-      if (soloOnly && !place.soloFriendly) return false;
-      if (ageGroup !== "전체" && place.ageGroup !== "전체" && place.ageGroup !== ageGroup) return false;
-      if (trimmedQuery && !place.name.includes(trimmedQuery)) {
-        return false;
-      }
-      return true;
-    });
-
-    return [...filtered].sort((a, b) =>
-      sortBy === "거리순" ? a.walkMinutes - b.walkMinutes : b.reviewCount - a.reviewCount,
-    );
-  }, [selectedRegion, selectedCategory, soloOnly, ageGroup, submittedQuery, sortBy]);
-
   const toggleBookmark = (id: string) => {
     setBookmarked((prev) => {
       const next = new Set(prev);
@@ -95,6 +166,8 @@ export const SearchSidebar: React.FC = () => {
       return next;
     });
   };
+
+  const isLoading = poolLoading || searching;
 
   return (
     <>
@@ -139,7 +212,7 @@ export const SearchSidebar: React.FC = () => {
         <div className="flex-1 overflow-y-auto">
           {/* Region tabs */}
           <div className="px-5 pt-4 flex gap-2">
-            {(Object.keys(REGION_TOTALS) as PlaceRegion[]).map((region) => (
+            {(["강원도", "여수"] as PlaceRegion[]).map((region) => (
               <button
                 key={region}
                 type="button"
@@ -152,7 +225,7 @@ export const SearchSidebar: React.FC = () => {
               >
                 {region}
                 <span className={`ml-1 ${selectedRegion === region ? "text-sky-100" : "text-slate-400"}`}>
-                  {REGION_TOTALS[region]}
+                  {regionTotals[region]}
                 </span>
               </button>
             ))}
@@ -213,18 +286,23 @@ export const SearchSidebar: React.FC = () => {
 
           {/* Solo-friendly toggle + age group dropdown */}
           <div className="px-5 pt-3 flex gap-2">
-            <div className="flex-1 flex items-center justify-between gap-2 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2">
-              <div>
-                <p className="text-xs font-semibold text-slate-800">혼밥 보장 식당</p>
-              </div>
+            <div
+              className={`flex-1 flex items-center justify-between gap-2 rounded-xl border px-3 py-2 ${
+                soloToggleDisabled ? "border-slate-100 bg-slate-50" : "border-sky-100 bg-sky-50"
+              }`}
+            >
+              <p className={`text-xs font-semibold ${soloToggleDisabled ? "text-slate-400" : "text-slate-800"}`}>
+                혼밥 보장 식당
+              </p>
               <button
                 type="button"
                 role="switch"
                 aria-checked={soloOnly}
+                disabled={soloToggleDisabled}
                 onClick={() => setSoloOnly((v) => !v)}
-                className={`shrink-0 w-9 h-5 rounded-full border bg-white transition-colors cursor-pointer relative ${
-                  soloOnly ? "border-sky-500" : "border-slate-300"
-                }`}
+                className={`shrink-0 w-9 h-5 rounded-full border bg-white transition-colors relative ${
+                  soloToggleDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+                } ${soloOnly ? "border-sky-500" : "border-slate-300"}`}
               >
                 <span
                   className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-all ${
@@ -255,7 +333,7 @@ export const SearchSidebar: React.FC = () => {
           <div className="px-5 pt-3 flex items-center justify-between text-xs text-slate-500">
             <span className="flex items-center gap-1">
               <MapPin className="w-3.5 h-3.5 text-slate-400" />
-              기준: {REFERENCE_POINT[selectedRegion]}
+              기준: {referenceSpot?.name ?? "검색 후 표시돼요"}
             </span>
             <div className="flex gap-1.5">
               {(["연관순위", "거리순"] as const).map((option) => (
@@ -276,12 +354,18 @@ export const SearchSidebar: React.FC = () => {
           </div>
 
           {/* Results count */}
-          <div className="px-5 pt-4 pb-2 text-xs font-semibold text-slate-500">검색된 장소 {results.length}곳</div>
+          <div className="px-5 pt-4 pb-2 text-xs font-semibold text-slate-500">
+            {submittedQuery ? `검색된 장소 ${results.length}곳` : "장소를 검색해보세요"}
+          </div>
 
           {/* Place list */}
           <div className="px-5 pb-6 space-y-4">
-            {results.length === 0 ? (
-              <div className="py-12 text-center text-sm text-slate-400">검색된 장소가 없어요.</div>
+            {isLoading ? (
+              <div className="py-12 text-center text-sm text-slate-400">불러오는 중...</div>
+            ) : results.length === 0 ? (
+              <div className="py-12 text-center text-sm text-slate-400">
+                {submittedQuery ? "검색된 장소가 없어요." : "검색어를 입력하고 찾아보세요."}
+              </div>
             ) : (
               results.map((place) => (
                 <div
@@ -300,10 +384,7 @@ export const SearchSidebar: React.FC = () => {
 
                   <div className="flex-1 min-w-0 space-y-1">
                     <h3 className="text-sm font-bold text-slate-900 truncate pr-6">{place.name}</h3>
-                    <p className="text-xs text-slate-500">
-                      <span className="text-amber-500 font-semibold">★ {place.rating.toFixed(2)}</span>
-                      <span> (리뷰 {place.reviewCount}) · 도보 {place.walkMinutes}분</span>
-                    </p>
+                    <p className="text-xs text-slate-500">{place.category}</p>
                   </div>
 
                   <button
