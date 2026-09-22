@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Script from "next/script";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { SearchSidebar } from "@/components/search/SearchSidebar";
 import { AuthProvider } from "@/context/AuthContext";
 import { SearchSidebarProvider } from "@/context/SearchSidebarContext";
+import { KakaoScriptLoader } from "@/components/KakaoScriptLoader";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,12 +30,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <link rel="preconnect" href="https://cdn.jsdelivr.net" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
-      <Script
-        src={`//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAO_MAP_KEY}&libraries=services,clusterer`}
-        strategy="beforeInteractive"
-      />
       </head>
       <body className="min-h-full flex flex-col bg-[#F8F9FA] text-[#1E293B]">
+        <KakaoScriptLoader />
         <AuthProvider>
           <SearchSidebarProvider>
             <Navbar />
