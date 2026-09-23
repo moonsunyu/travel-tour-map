@@ -63,7 +63,6 @@ export const SearchSidebar: React.FC = () => {
   });
 
   const soloToggleDisabled = selectedCategory === "관광명소" || selectedCategory === "숙박";
-
   // 나이 필터는 혼밥 토글 켜졌을 때 + 음식점/숙박 카테고리일 때 잠김
   const ageDisabled = soloOnly || selectedCategory === "음식점" || selectedCategory === "숙박";
 
@@ -100,10 +99,15 @@ export const SearchSidebar: React.FC = () => {
     if (soloToggleDisabled && soloOnly) setSoloOnly(false);
   }, [selectedCategory, soloToggleDisabled, soloOnly]);
 
-  // 혼밥 토글 켜지면 정렬/나이 필터 초기화
+  // 나이 필터가 막히는 상태가 되면 값 초기화
   useEffect(() => {
     if (ageDisabled) setAgeGroup("선택 안함");
   }, [ageDisabled]);
+
+  // 혼밥 토글 켜졌는데 연관순위가 선택돼 있으면 자동으로 거리순 전환
+  useEffect(() => {
+    if (soloOnly && sortBy === "연관순위") setSortBy("거리순");
+  }, [soloOnly, sortBy]);
 
   // 검색 및 필터링 처리
   useEffect(() => {
@@ -122,7 +126,8 @@ export const SearchSidebar: React.FC = () => {
       if (!submittedQuery) {
         let filtered = pool;
         if (selectedCategory === "음식점") filtered = pool.filter((p) => p.category === "음식점");
-        else if (selectedCategory === "관광명소") filtered = pool.filter((p) => p.category !== "음식점" && p.category !== "숙박");
+        else if (selectedCategory === "관광명소")
+          filtered = pool.filter((p) => p.category !== "음식점" && p.category !== "숙박");
         else if (selectedCategory === "숙박") filtered = pool.filter((p) => p.category === "숙박");
 
         if (soloOnly) filtered = pool.filter((p) => p.soloFriendly);
@@ -136,24 +141,44 @@ export const SearchSidebar: React.FC = () => {
         return;
       }
 
-      // 검색어가 있으면: 기준점 기반 연관장소 + 혼밥식당
-      const { referenceSpot: ref, relatedPlaces, soloRestaurants } = await searchAndGetResults(
-        submittedQuery,
-        selectedRegion,
-        pool,
-      );
+      // 검색어가 있으면: 카카오 검색 → DB 교집합 → 모드별 분기
+      const result = await searchAndGetResults(submittedQuery, selectedRegion, pool);
       if (cancelled) return;
-      setReferenceSpot(ref);
 
-      if (!ref) {
+      if (result.mode === "empty") {
+        setReferenceSpot(null);
         setResults([]);
         setSearching(false);
         return;
       }
 
+      if (result.mode === "keyword") {
+        // 여러 장소 매칭 — 기준점 없이 매칭 목록 그대로 필터링
+        setReferenceSpot(null);
+
+        let filtered = result.matches;
+        if (selectedCategory === "음식점") filtered = filtered.filter((p) => p.category === "음식점");
+        else if (selectedCategory === "관광명소")
+          filtered = filtered.filter((p) => p.category !== "음식점" && p.category !== "숙박");
+        else if (selectedCategory === "숙박") filtered = filtered.filter((p) => p.category === "숙박");
+
+        if (soloOnly) filtered = result.matches.filter((p) => p.soloFriendly);
+        if (ageGroup !== "선택 안함") filtered = filtered.filter((p) => p.ageGroups.includes(ageGroup));
+
+        if (!cancelled) {
+          setResults(filtered);
+          setSearching(false);
+        }
+        return;
+      }
+
+      // result.mode === "single" — 기준점 + 연관장소(RANK순) + 혼밥식당
+      const ref = result.referenceSpot;
+      setReferenceSpot(ref);
+
       // 혼밥 보장 식당 토글 ON: 혼밥식당만 거리순 단독 표시
       if (soloOnly) {
-        const sorted = [...soloRestaurants].sort(
+        const sorted = [...result.soloRestaurants].sort(
           (a, b) => haversineKm(a.lat, a.lng, ref.lat, ref.lng) - haversineKm(b.lat, b.lng, ref.lat, ref.lng),
         );
         if (!cancelled) {
@@ -166,19 +191,20 @@ export const SearchSidebar: React.FC = () => {
       // 전체 카테고리 결과 결합
       let combined: DbPlace[];
       if (sortBy === "연관순위") {
-        const soloSorted = [...soloRestaurants].sort(
+        const soloSorted = [...result.soloRestaurants].sort(
           (a, b) => haversineKm(a.lat, a.lng, ref.lat, ref.lng) - haversineKm(b.lat, b.lng, ref.lat, ref.lng),
         );
-        combined = [...relatedPlaces, ...soloSorted];
+        combined = [...result.relatedPlaces, ...soloSorted];
       } else {
-        combined = [...relatedPlaces, ...soloRestaurants].sort(
+        combined = [...result.relatedPlaces, ...result.soloRestaurants].sort(
           (a, b) => haversineKm(a.lat, a.lng, ref.lat, ref.lng) - haversineKm(b.lat, b.lng, ref.lat, ref.lng),
         );
       }
 
       let filtered = combined;
       if (selectedCategory === "음식점") filtered = combined.filter((p) => p.category === "음식점");
-      else if (selectedCategory === "관광명소") filtered = combined.filter((p) => p.category !== "음식점" && p.category !== "숙박");
+      else if (selectedCategory === "관광명소")
+        filtered = combined.filter((p) => p.category !== "음식점" && p.category !== "숙박");
       else if (selectedCategory === "숙박") filtered = combined.filter((p) => p.category === "숙박");
 
       if (ageGroup !== "선택 안함") {
@@ -223,9 +249,8 @@ export const SearchSidebar: React.FC = () => {
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-300 ${
-          isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
+        className={`fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-300 ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          }`}
         onClick={closeSearchSidebar}
       />
 
@@ -235,9 +260,8 @@ export const SearchSidebar: React.FC = () => {
         role="dialog"
         aria-label="검색"
         aria-hidden={!isOpen}
-        className={`fixed top-0 left-0 z-50 h-full w-full max-w-sm bg-white shadow-2xl border-r border-slate-200 flex flex-col transition-transform duration-300 ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed top-0 left-0 z-50 h-full w-full max-w-sm bg-white shadow-2xl border-r border-slate-200 flex flex-col transition-transform duration-300 ${isOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-100 shrink-0">
@@ -267,11 +291,10 @@ export const SearchSidebar: React.FC = () => {
                 key={region}
                 type="button"
                 onClick={() => setSelectedRegion(region)}
-                className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors cursor-pointer ${
-                  selectedRegion === region
-                    ? "bg-sky-600 border-sky-600 text-white"
-                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-                }`}
+                className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors cursor-pointer ${selectedRegion === region
+                  ? "bg-sky-600 border-sky-600 text-white"
+                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                  }`}
               >
                 {region}
                 <span className={`ml-1 ${selectedRegion === region ? "text-sky-100" : "text-slate-400"}`}>
@@ -322,11 +345,10 @@ export const SearchSidebar: React.FC = () => {
                 key={opt.value}
                 type="button"
                 onClick={() => setSelectedCategory(opt.value)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer flex items-center gap-1.5 ${
-                  selectedCategory === opt.value
-                    ? "bg-sky-600 border-sky-600 text-white"
-                    : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer flex items-center gap-1.5 ${selectedCategory === opt.value
+                  ? "bg-sky-600 border-sky-600 text-white"
+                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
               >
                 {opt.icon}
                 <span>{opt.label}</span>
@@ -337,9 +359,8 @@ export const SearchSidebar: React.FC = () => {
           {/* Solo-friendly toggle + age group dropdown */}
           <div className="px-5 pt-3 flex gap-2">
             <div
-              className={`flex-1 flex items-center justify-between gap-2 rounded-xl border px-3 py-2 ${
-                soloToggleDisabled ? "border-slate-100 bg-slate-50" : "border-sky-100 bg-sky-50"
-              }`}
+              className={`flex-1 flex items-center justify-between gap-2 rounded-xl border px-3 py-2 ${soloToggleDisabled ? "border-slate-100 bg-slate-50" : "border-sky-100 bg-sky-50"
+                }`}
             >
               <div>
                 <p className={`text-xs font-semibold ${soloToggleDisabled ? "text-slate-400" : "text-slate-800"}`}>
@@ -352,14 +373,12 @@ export const SearchSidebar: React.FC = () => {
                 aria-checked={soloOnly}
                 disabled={soloToggleDisabled}
                 onClick={() => setSoloOnly((v) => !v)}
-                className={`shrink-0 w-9 h-5 rounded-full border bg-white transition-colors relative ${
-                  soloToggleDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
-                } ${soloOnly ? "border-sky-500" : "border-slate-300"}`}
+                className={`shrink-0 w-9 h-5 rounded-full border bg-white transition-colors relative ${soloToggleDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+                  } ${soloOnly ? "border-sky-500" : "border-slate-300"}`}
               >
                 <span
-                  className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-all ${
-                    soloOnly ? "translate-x-[14px] bg-sky-600" : "translate-x-0 bg-slate-300"
-                  }`}
+                  className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-all ${soloOnly ? "translate-x-[14px] bg-sky-600" : "translate-x-0 bg-slate-300"
+                    }`}
                 />
               </button>
             </div>
@@ -370,9 +389,8 @@ export const SearchSidebar: React.FC = () => {
                 value={ageGroup}
                 disabled={ageDisabled}
                 onChange={(e) => setAgeGroup(e.target.value as AgeGroupFilter)}
-                className={`h-full appearance-none pl-3 pr-7 py-2 text-xs font-semibold border border-slate-200 rounded-xl outline-none bg-white ${
-                  ageDisabled ? "text-slate-300 cursor-not-allowed" : "text-slate-700 cursor-pointer hover:bg-slate-50"
-                }`}
+                className={`h-full appearance-none pl-3 pr-7 py-2 text-xs font-semibold border border-slate-200 rounded-xl outline-none bg-white ${ageDisabled ? "text-slate-300 cursor-not-allowed" : "text-slate-700 cursor-pointer hover:bg-slate-50"
+                  }`}
               >
                 {AGE_GROUP_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -380,9 +398,10 @@ export const SearchSidebar: React.FC = () => {
                   </option>
                 ))}
               </select>
-              <ChevronDown className={`w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none ${
-                ageDisabled ? "text-slate-300" : "text-slate-400"
-              }`} />
+              <ChevronDown
+                className={`w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none ${ageDisabled ? "text-slate-300" : "text-slate-400"
+                  }`}
+              />
             </div>
           </div>
 
@@ -390,24 +409,25 @@ export const SearchSidebar: React.FC = () => {
           <div className="px-5 pt-3 flex items-center justify-between text-xs text-slate-500">
             <span className="flex items-center gap-1">
               <MapPin className="w-3.5 h-3.5 text-slate-400" />
-              기준: {referenceSpot?.name ?? (submittedQuery ? "기준점 계산 중" : "전체 탐색 중")}
+              기준:{" "}
+              {referenceSpot?.name ??
+                (searching ? "검색 중" : submittedQuery ? "카테고리 검색 결과" : "전체 탐색 중")}
             </span>
             <div className="flex gap-1.5">
               {(["연관순위", "거리순"] as const).map((option) => {
-                const optionDisabled = option === "연관순위" && soloOnly; // 혼밥 토글 켜지면 연관순위만 막힘
+                // 혼밥 토글 켜지면 연관순위만 비활성화, 거리순은 계속 선택 가능
+                const optionDisabled = option === "연관순위" && soloOnly;
                 return (
                   <button
                     key={option}
                     type="button"
                     disabled={optionDisabled}
                     onClick={() => setSortBy(option)}
-                    className={`px-2.5 py-1 rounded-lg font-medium transition-colors border ${
-                      optionDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
-                    } ${
-                      sortBy === option
+                    className={`px-2.5 py-1 rounded-lg font-medium transition-colors border ${optionDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+                      } ${sortBy === option
                         ? "border-sky-300 bg-sky-50 text-sky-700"
                         : "border-transparent text-slate-500 hover:bg-slate-100"
-                    }`}
+                      }`}
                   >
                     {option}
                   </button>
@@ -463,7 +483,9 @@ export const SearchSidebar: React.FC = () => {
                       className="absolute top-3 right-3 text-slate-300 hover:text-amber-400 cursor-pointer"
                       title="보관함에 저장"
                     >
-                      <Star className={`w-4 h-4 ${bookmarked.has(place.id) ? "fill-amber-400 text-amber-400" : ""}`} />
+                      <Star
+                        className={`w-4 h-4 ${bookmarked.has(place.id) ? "fill-amber-400 text-amber-400" : ""}`}
+                      />
                     </button>
                   </div>
                 );
