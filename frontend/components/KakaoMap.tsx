@@ -3,18 +3,23 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchSidebar } from "@/context/SearchSidebarContext";
-import { DbPlace, PlaceCategory, PlaceRegion } from "@/lib/places";
+import { DbPlace, PlaceCategory, PlaceRegion, fetchRegionTotals } from "@/lib/places";
 import { reverseGeocode } from "@/lib/kakaoGeocode";
 import MapControls from "@/components/MapControls";
-import { LocateFixed, RefreshCw, Undo2 } from "lucide-react";
+import { Loader2, LocateFixed, RefreshCw, Undo2 } from "lucide-react";
 
 const REGION_CENTER: Record<PlaceRegion, { lat: number; lng: number }> = {
   강원도: { lat: 37.8228, lng: 128.1555 },
   여수: { lat: 34.7604, lng: 127.6622 },
 };
 
+const REGION_OVERVIEW_COLOR: Record<PlaceRegion, string> = {
+  강원도: "#4F46E5", // indigo
+  여수: "#0D9488", // teal
+};
+
 const PENINSULA_CENTER = { lat: 36.3, lng: 127.8 };
-const PENINSULA_LEVEL = 12;
+const PENINSULA_LEVEL = 13;
 const REGION_LEVEL = 9;
 const SELECTED_PLACE_LEVEL = 2;
 const PROGRAMMATIC_MOVE_GUARD_MS = 700;
@@ -79,7 +84,6 @@ function referencePinImage() {
   });
 }
 
-// 사용자가 실제로 검색을 시작한 좌표(현 지도 중심 / GPS)를 표시하는 작은 마커
 function searchOriginMarkerImage() {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26">
@@ -133,6 +137,22 @@ function buildDetailCardElement(place: DbPlace, address: string | null, onClose:
   return wrapper;
 }
 
+function regionOverviewElement(regionName: string, count: number, color: string) {
+  const diameter = Math.min(160, Math.max(70, 50 + count / 8));
+  const el = document.createElement("div");
+  el.style.width = `${diameter}px`;
+  el.style.height = `${diameter}px`;
+  el.style.backgroundColor = color;
+  el.style.opacity = "0.85";
+  el.className =
+    "rounded-full flex flex-col items-center justify-center text-white font-bold shadow-xl cursor-pointer";
+  el.innerHTML = `
+    <span style="font-size:${Math.max(12, diameter / 6)}px; font-weight:600;">${regionName}</span>
+    <span style="font-size:${Math.max(16, diameter / 4)}px;">${count}</span>
+  `;
+  return el;
+}
+
 function useKakaoReady(): boolean {
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -156,11 +176,13 @@ export default function KakaoMap() {
     results,
     referenceSpot,
     selectedRegion,
+    setSelectedRegion,
     mapSearchRequest,
     setMapSearchRequest,
     openSearchSidebar,
     setSelectedPlace,
     selectedPlace,
+    placesLoading,
   } = useSearchSidebar();
   const kakaoReady = useKakaoReady();
 
@@ -171,19 +193,26 @@ export default function KakaoMap() {
   const referenceLabelOverlayRef = useRef<any>(null);
   const searchOriginMarkerRef = useRef<any>(null);
   const searchOriginLabelOverlayRef = useRef<any>(null);
+  const overviewOverlaysRef = useRef<any[]>([]);
   const isFirstRegionEffect = useRef(true);
   const hoverOverlayRef = useRef<any>(null);
   const detailOverlayRef = useRef<any>(null);
   const justClickedMarkerRef = useRef(false);
+  const hasShownResultsRef = useRef(false);
 
   const isProgrammaticMoveRef = useRef(false);
   const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [lastGoodView, setLastGoodView] = useState<{ lat: number; lng: number; level: number } | null>(null);
-
   const [showResearchButton, setShowResearchButton] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [detailAddress, setDetailAddress] = useState<string | null>(null);
+  const [regionTotals, setRegionTotals] = useState<Record<PlaceRegion, number> | null>(null);
+  const [isRegionSwitching, setIsRegionSwitching] = useState(false);
+
+  useEffect(() => {
+    fetchRegionTotals().then(setRegionTotals);
+  }, []);
 
   function markProgrammaticMove() {
     isProgrammaticMoveRef.current = true;
@@ -191,6 +220,11 @@ export default function KakaoMap() {
     programmaticTimeoutRef.current = setTimeout(() => {
       isProgrammaticMoveRef.current = false;
     }, PROGRAMMATIC_MOVE_GUARD_MS);
+  }
+
+  function clearOverviewOverlays() {
+    overviewOverlaysRef.current.forEach((o) => o.setMap(null));
+    overviewOverlaysRef.current = [];
   }
 
   function attachHoverAndClick(marker: any, place: DbPlace) {
@@ -271,6 +305,8 @@ export default function KakaoMap() {
       return;
     }
 
+    setIsRegionSwitching(true); // 새 지역 데이터가 다 로딩될 때까지 오버레이로 가림
+
     markProgrammaticMove();
     if (selectedRegion) {
       const center = REGION_CENTER[selectedRegion];
@@ -284,10 +320,43 @@ export default function KakaoMap() {
     setLastGoodView(null);
   }, [selectedRegion]);
 
-  // results / referenceSpot이 바뀔 때마다 마커 다시 그리고 범위 맞춤
+  // 새 지역의 pool/검색 결과 로딩이 끝나면(=placesLoading이 false가 되면) 오버레이 해제
+  useEffect(() => {
+    if (!placesLoading) setIsRegionSwitching(false);
+  }, [placesLoading]);
+
+  // 한반도 전체뷰: 지역별 개요 원 두 개 표시 (지역 미선택 상태일 때만)
   useEffect(() => {
     if (!kakaoReady || !mapInstanceRef.current || !clustererRef.current) return;
+    if (selectedRegion) return; // 지역 선택 시엔 아래의 개별 마커 effect가 처리
+    if (!regionTotals) return;
 
+    clustererRef.current.clear();
+    clearOverviewOverlays();
+
+    (Object.keys(REGION_CENTER) as PlaceRegion[]).forEach((region) => {
+      const center = REGION_CENTER[region];
+      const el = regionOverviewElement(region, regionTotals[region], REGION_OVERVIEW_COLOR[region]);
+      el.onclick = () => setSelectedRegion(region);
+
+      const overlay = new window.kakao.maps.CustomOverlay({
+        position: new window.kakao.maps.LatLng(center.lat, center.lng),
+        content: el,
+        zIndex: 15,
+      });
+      overlay.setMap(mapInstanceRef.current);
+      overviewOverlaysRef.current.push(overlay);
+    });
+
+    hasShownResultsRef.current = true;
+  }, [selectedRegion, regionTotals, kakaoReady]);
+
+  // 지역 선택 시: 개요 원 지우고, 기존처럼 개별 마커/클러스터링
+  useEffect(() => {
+    if (!kakaoReady || !mapInstanceRef.current || !clustererRef.current) return;
+    if (!selectedRegion) return; // 한반도 뷰는 위의 effect가 처리
+
+    clearOverviewOverlays();
     clustererRef.current.clear();
     if (referenceMarkerRef.current) {
       referenceMarkerRef.current.setMap(null);
@@ -344,7 +413,6 @@ export default function KakaoMap() {
       hasAny = true;
     }
 
-    // 검색 원좌표(현 지도 중심/GPS)도 범위에 포함시켜서, 기준점과 멀리 떨어져 있어도 한 화면에 같이 보이도록
     if (mapSearchRequest) {
       bounds.extend(new window.kakao.maps.LatLng(mapSearchRequest.lat, mapSearchRequest.lng));
       hasAny = true;
@@ -354,7 +422,6 @@ export default function KakaoMap() {
       markProgrammaticMove();
       mapInstanceRef.current.setBounds(bounds);
 
-      // 지금 이 순간의 뷰를 "정상 뷰"로 저장 (돌아가기 버튼이 사용)
       const c = mapInstanceRef.current.getCenter();
       setLastGoodView({
         lat: c.getLat(),
@@ -362,9 +429,11 @@ export default function KakaoMap() {
         level: mapInstanceRef.current.getLevel(),
       });
     }
-  }, [results, referenceSpot, kakaoReady]);
 
-  // 검색 원좌표(현 지도 중심/GPS) 마커 — results/referenceSpot과 별개로, mapSearchRequest 자체가 바뀔 때만 갱신
+    hasShownResultsRef.current = true;
+  }, [results, referenceSpot, selectedRegion, mapSearchRequest, kakaoReady]);
+
+  // 검색 원좌표(현 지도 중심/GPS) 마커
   useEffect(() => {
     if (!kakaoReady || !mapInstanceRef.current) return;
 
@@ -476,11 +545,12 @@ export default function KakaoMap() {
   function handleReturnClick() {
     if (!mapInstanceRef.current || !lastGoodView) return;
     markProgrammaticMove();
-    const { lat, lng, level } = lastGoodView;
-    mapInstanceRef.current.panTo(new window.kakao.maps.LatLng(lat, lng)); // panTo는 애니메이션과 함께 부드럽게 이동
-    mapInstanceRef.current.setLevel(level);
+    mapInstanceRef.current.panTo(new window.kakao.maps.LatLng(lastGoodView.lat, lastGoodView.lng));
+    mapInstanceRef.current.setLevel(lastGoodView.level);
     setShowResearchButton(false);
   }
+
+  const showLoadingOverlay = !kakaoReady || (placesLoading && !hasShownResultsRef.current) || isRegionSwitching;
 
   return (
     <div className="fixed inset-0">
@@ -522,9 +592,10 @@ export default function KakaoMap() {
         </button>
       )}
 
-      {!kakaoReady && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-sm text-slate-500">
-          지도를 불러오는 중...
+      {showLoadingOverlay && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/90 text-sm text-slate-500 z-40 pointer-events-none">
+          <Loader2 className="w-7 h-7 animate-spin text-sky-500" />
+          <span>잠시만 기다려주세요</span>
         </div>
       )}
     </div>

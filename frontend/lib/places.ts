@@ -36,11 +36,11 @@ const REGION_TABLE_PREFIX: Record<PlaceRegion, string> = {
   여수: "YEOSU",
 };
 
-// "혼밥"은 장소 검색이 아니라 혼밥 인증 식당 목록 요청으로 간주
+// "혼밥"은 장소 검색이 아니라 혼밥 인증 식당 목록 요청으로 간주 (카카오 호출 없이 즉시 반환)
 const SOLO_KEYWORDS = ["혼밥"];
 
 // "숙소", "맛집" 같은 카테고리성 단어는 카카오 키워드 검색이 잘 못 찾아내므로,
-// 카카오를 거치지 않고 우리 DB의 category로 바로 필터링
+// 카카오를 거치지 않고 우리 DB의 category로 바로 필터링한다.
 // 카테고리성 단어 목록은 AI를 통해 추출함
 const CATEGORY_KEYWORDS: { pattern: RegExp; category: PlaceCategory }[] = [
   { pattern: /맛집|음식점|식당|레스토랑/, category: "음식점" },
@@ -262,16 +262,18 @@ export async function buildSingleModeResult(
 }
 
 /**
- * 검색 메인 함수.
+ * 검색 메인 함수. 아래 순서로 판별해서, 앞 단계에서 처리되면 뒤 단계는 실행되지 않음.
  *
  * 1. "혼밥" 포함 검색어 → 혼밥 인증 식당 목록 즉시 반환 (카카오 호출 없음)
- * 2. 카카오 키워드 검색 실행
- * 3. 1등 결과가 "특정 장소"로 보이면:
- *    a. DB에 완전일치(이름/좌표) 하는 곳이 있으면 그걸 기준점으로 사용
- *    b. 없으면 [옵션 B] 카카오가 알려준 좌표에서 FALLBACK_MAX_KM 이내
- *       가장 가까운 DB 장소를 대신 기준점으로 사용
- *    c. 그마저 없으면(너무 멀면) empty
- * 4. 1등 결과가 "카테고리 검색"으로 보이면, 전체 카카오 결과와 DB 교집합을 keyword 모드로 반환
+ * 2. 검색어가 pool 안의 장소명과 완전히 일치 → 카카오를 거치지 않고 그 장소를 바로 기준점으로 사용
+ *    (카카오 표기가 DB와 미묘하게 다를 때 생기는 매칭 실패를 애초에 피하기 위함)
+ * 3. "숙소", "맛집" 같은 카테고리성 단어 → 카카오 호출 없이 pool을 category로 바로 필터링
+ * 4. 위 세 가지에 해당 안 되면 카카오 키워드 검색 실행:
+ *    a. 1등 결과가 "특정 장소"로 보이면(looksLikeSpecificPlace):
+ *       - DB에 완전일치(이름/좌표) 하는 곳이 있으면 그걸 기준점으로 사용
+ *       - 없으면 [옵션 B] 카카오가 알려준 좌표에서 FALLBACK_MAX_KM 이내 가장 가까운 DB 장소로 대체
+ *       - 그마저 없으면(너무 멀면) empty
+ *    b. "카테고리 검색"으로 보이면, 전체 카카오 결과와 DB 교집합을 keyword 모드로 반환
  */
 export async function searchAndGetResults(
   query: string,
@@ -282,6 +284,16 @@ export async function searchAndGetResults(
 
   if (SOLO_KEYWORDS.some((kw) => trimmed.includes(kw))) {
     return { mode: "keyword", matches: pool.filter((p) => p.soloFriendly) };
+  }
+
+  const exactMatch = pool.find((p) => p.name === trimmed);
+  if (exactMatch) {
+    return buildSingleModeResult(exactMatch, region, pool);
+  }
+
+  const categoryMatch = matchCategoryKeyword(trimmed);
+  if (categoryMatch) {
+    return { mode: "keyword", matches: pool.filter((p) => p.category === categoryMatch) };
   }
 
   const kakaoResults = await kakaoKeywordSearch(`${region} ${trimmed}`);
@@ -315,7 +327,7 @@ export async function searchAndGetResults(
     return buildSingleModeResult(target, region, pool);
   }
 
-  // 카테고리성 검색
+  // 카테고리성 검색 (카카오 결과 기반)
   const matched = intersectWithPool(kakaoResults, pool);
   if (matched.length === 0) return { mode: "empty" };
   return { mode: "keyword", matches: matched };
@@ -326,12 +338,10 @@ async function findNearestHub(lat: number, lng: number, region: PlaceRegion): Pr
   const supabase = createClient();
   const prefix = REGION_TABLE_PREFIX[region];
 
-  const { data: hubs, error } = await supabase
+  const { data: hubs } = await supabase
     .from(`T_${prefix}_SPOT`)
     .select('"SPOT_ID","SPOT_NAME","CATEGORY","LATITUDE","LONGITUDE"')
     .not('"LATITUDE"', "is", null);
-
-  console.log(`[findNearestHub] ${prefix} 조회 결과:`, hubs?.length, "에러:", error);
 
   if (!hubs || hubs.length === 0) return null;
 
