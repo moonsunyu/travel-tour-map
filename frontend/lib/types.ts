@@ -76,7 +76,21 @@ export interface ProfileImageUploadResponse {
   profileImageUrl: string;
 }
 
-export {};
+export interface BookmarkItem {
+  spotId: string;
+  spotName: string;
+  category: string | null;
+  region: string;
+}
+
+export interface AddBookmarkRequest {
+  spotId: string;
+  spotName: string;
+  category: string;
+  region: string;
+}
+
+export { };
 
 declare global {
   interface Window {
