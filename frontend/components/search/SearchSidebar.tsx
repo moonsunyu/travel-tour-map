@@ -73,7 +73,6 @@ export const SearchSidebar: React.FC = () => {
   const soloToggleDisabled = selectedCategory === "관광명소" || selectedCategory === "숙박";
   const ageDisabled = soloOnly || selectedCategory === "음식점" || selectedCategory === "숙박";
 
-  // X를 누르면 완전히 사라지고 검색 내용도 초기화됨
   const handleFullClose = () => {
     setQuery("");
     setSubmittedQuery("");
@@ -85,12 +84,10 @@ export const SearchSidebar: React.FC = () => {
     closeSearchSidebar();
   };
 
-  // 펼쳐질 때 검색창 포커스
   useEffect(() => {
     if (isOpen) inputRef.current?.focus();
   }, [isOpen]);
 
-  // Esc는 접기만 (완전 초기화는 X 버튼에서만)
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -103,13 +100,6 @@ export const SearchSidebar: React.FC = () => {
   useEffect(() => {
     fetchRegionTotals().then(setRegionTotals);
   }, []);
-
-  // 지도에서 마커를 클릭하면 사이드바 리스트의 해당 카드로 스크롤 + 강조
-  useEffect(() => {
-    if (!selectedPlace) return;
-    const el = document.getElementById(`place-item-${selectedPlace.id}`);
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [selectedPlace]);
 
   useEffect(() => {
     setPoolLoading(true);
@@ -133,7 +123,6 @@ export const SearchSidebar: React.FC = () => {
     if (soloOnly && sortBy === "연관순위") setSortBy("거리순");
   }, [soloOnly, sortBy]);
 
-  // mapSearchRequest가 채워지면 검색창에 주소 표시 (텍스트 검색 분기와 안 겹치게 submittedQuery는 비움)
   useEffect(() => {
     if (mapSearchRequest) {
       setQuery(mapSearchRequest.label);
@@ -141,12 +130,16 @@ export const SearchSidebar: React.FC = () => {
     }
   }, [mapSearchRequest]);
 
-  // 지역이 바뀌면 좌표 검색 상태 초기화 (다른 지역 SPOT 테이블을 잘못 뒤지는 것 방지)
   useEffect(() => {
     setMapSearchRequest(null);
   }, [selectedRegion, setMapSearchRequest]);
 
-  // 검색 및 필터링 처리
+  useEffect(() => {
+    if (!selectedPlace) return;
+    const el = document.getElementById(`place-item-${selectedPlace.id}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [selectedPlace]);
+
   useEffect(() => {
     if (pool.length === 0) {
       setResults([]);
@@ -154,31 +147,35 @@ export const SearchSidebar: React.FC = () => {
       return;
     }
 
-
     let cancelled = false;
 
-    // 기준점 + 연관장소/식당 배열을 받아 현재 필터·정렬 상태를 적용해 최종 목록을 만듦
-    // (텍스트 검색의 single 모드, 좌표 검색 둘 다 이 함수를 재사용)
     function applySingleModeResult(
-      ref: { lat: number; lng: number },
+      ref: { id: string; lat: number; lng: number },
       relatedPlaces: DbPlace[],
       soloRestaurants: DbPlace[],
+      sortOrigin: { lat: number; lng: number },
     ): DbPlace[] {
       if (soloOnly) {
         return [...soloRestaurants].sort(
-          (a, b) => haversineKm(a.lat, a.lng, ref.lat, ref.lng) - haversineKm(b.lat, b.lng, ref.lat, ref.lng),
+          (a, b) =>
+            haversineKm(a.lat, a.lng, sortOrigin.lat, sortOrigin.lng) -
+            haversineKm(b.lat, b.lng, sortOrigin.lat, sortOrigin.lng),
         );
       }
 
       let combined: DbPlace[];
       if (sortBy === "연관순위") {
         const soloSorted = [...soloRestaurants].sort(
-          (a, b) => haversineKm(a.lat, a.lng, ref.lat, ref.lng) - haversineKm(b.lat, b.lng, ref.lat, ref.lng),
+          (a, b) =>
+            haversineKm(a.lat, a.lng, sortOrigin.lat, sortOrigin.lng) -
+            haversineKm(b.lat, b.lng, sortOrigin.lat, sortOrigin.lng),
         );
         combined = [...relatedPlaces, ...soloSorted];
       } else {
         combined = [...relatedPlaces, ...soloRestaurants].sort(
-          (a, b) => haversineKm(a.lat, a.lng, ref.lat, ref.lng) - haversineKm(b.lat, b.lng, ref.lat, ref.lng),
+          (a, b) =>
+            haversineKm(a.lat, a.lng, sortOrigin.lat, sortOrigin.lng) -
+            haversineKm(b.lat, b.lng, sortOrigin.lat, sortOrigin.lng),
         );
       }
 
@@ -192,13 +189,25 @@ export const SearchSidebar: React.FC = () => {
         filtered = filtered.filter((p) => p.ageGroups.includes(ageGroup));
       }
 
+      const refCard = pool.find((p) => p.id === ref.id);
+      if (refCard) {
+        const categoryOk =
+          selectedCategory === "전체" ||
+          (selectedCategory === "관광명소"
+            ? refCard.category !== "음식점" && refCard.category !== "숙박"
+            : refCard.category === selectedCategory);
+        const ageOk = ageGroup === "선택 안함" || refCard.ageGroups.includes(ageGroup);
+        if (categoryOk && ageOk) {
+          filtered = [refCard, ...filtered.filter((p) => p.id !== ref.id)];
+        }
+      }
+
       return filtered;
     }
 
     async function processSearch() {
       setSearching(true);
 
-      // 좌표 기반 검색(현 지도/내 위치)이 최우선
       if (mapSearchRequest && selectedRegion) {
         const result = await searchFromCoordinates(mapSearchRequest.lat, mapSearchRequest.lng, selectedRegion, pool);
         if (cancelled) return;
@@ -211,7 +220,12 @@ export const SearchSidebar: React.FC = () => {
         }
 
         setReferenceSpot(result.referenceSpot);
-        const filtered = applySingleModeResult(result.referenceSpot, result.relatedPlaces, result.soloRestaurants);
+        const filtered = applySingleModeResult(
+          result.referenceSpot,
+          result.relatedPlaces,
+          result.soloRestaurants,
+          { lat: mapSearchRequest.lat, lng: mapSearchRequest.lng },
+        );
         if (!cancelled) {
           setResults(filtered);
           setSearching(false);
@@ -219,7 +233,6 @@ export const SearchSidebar: React.FC = () => {
         return;
       }
 
-      // 검색어가 없으면: 기준점 없이 카테고리/나이 필터만 적용한 전체 pool
       if (!submittedQuery) {
         let filtered = pool;
         if (selectedCategory === "음식점") filtered = pool.filter((p) => p.category === "음식점");
@@ -277,7 +290,7 @@ export const SearchSidebar: React.FC = () => {
 
       const ref = result.referenceSpot;
       setReferenceSpot(ref);
-      const filtered = applySingleModeResult(ref, result.relatedPlaces, result.soloRestaurants);
+      const filtered = applySingleModeResult(ref, result.relatedPlaces, result.soloRestaurants, ref);
       if (!cancelled) {
         setResults(filtered);
         setSearching(false);
@@ -292,6 +305,9 @@ export const SearchSidebar: React.FC = () => {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (mapSearchRequest && query.trim() === mapSearchRequest.label) {
+      return;
+    }
     setMapSearchRequest(null);
     setSubmittedQuery(query.trim());
   };
@@ -315,14 +331,12 @@ export const SearchSidebar: React.FC = () => {
 
   return (
     <>
-      {/* 배경 어둡게+흐림: isOpen이면서 펼쳐진 상태일 때만 (접혀있을 땐 배경 안 가림) */}
       <div
         className={`fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-300 ${isOpen && !isCollapsed ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
           }`}
         onClick={toggleCollapsed}
       />
 
-      {/* 패널: isOpen=false면 화면 밖으로 완전히 숨김. isOpen=true일 때만 폭(w-12/w-96)이 의미 있음 */}
       <div
         id="search-sidebar"
         role="dialog"
@@ -331,7 +345,6 @@ export const SearchSidebar: React.FC = () => {
         className={`fixed top-0 left-0 z-50 h-full bg-white shadow-2xl border-r border-slate-200 flex flex-col transition-all duration-300 overflow-hidden ${!isOpen ? "-translate-x-full w-96" : isCollapsed ? "translate-x-0 w-12" : "translate-x-0 w-96"
           }`}
       >
-        {/* 토글 버튼: isOpen일 때만 보이게 */}
         {isOpen && (
           <button
             type="button"
@@ -354,10 +367,10 @@ export const SearchSidebar: React.FC = () => {
 
         {/* 펼쳐진 상태 콘텐츠 */}
         <div
-          className={`flex-1 flex flex-col overflow-y-auto transition-opacity duration-200 ${isCollapsed ? "opacity-0 pointer-events-none absolute" : "opacity-100"
+          className={`flex-1 flex flex-col overflow-hidden transition-opacity duration-200 ${isCollapsed ? "opacity-0 pointer-events-none absolute" : "opacity-100"
             }`}
         >
-          {/* Header */}
+          {/* Header (항상 고정) */}
           <div className="flex items-center justify-between p-5 border-b border-slate-100 shrink-0">
             <div className="flex items-center gap-2.5">
               <Image src="/logo.png" alt="홀로트립 로고" width={40} height={40} className="shrink-0" priority />
@@ -376,223 +389,239 @@ export const SearchSidebar: React.FC = () => {
             </button>
           </div>
 
-          {/* Scrollable body */}
-          <div className="flex-1 overflow-y-auto">
-            <div className="px-5 pt-4 flex gap-2">
-              {(["강원도", "여수"] as PlaceRegion[]).map((region) => (
-                <button
-                  key={region}
-                  type="button"
-                  onClick={() => setSelectedRegion(region)}
-                  className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors cursor-pointer ${selectedRegion === region
-                    ? "bg-sky-600 border-sky-600 text-white"
-                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-                    }`}
-                >
-                  {region}
-                  <span className={`ml-1 ${selectedRegion === region ? "text-sky-100" : "text-slate-400"}`}>
-                    {regionTotals[region]}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <form onSubmit={handleSearchSubmit} className="px-5 pt-3 flex gap-2">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  id="search-sidebar-input"
-                  ref={inputRef}
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="가고 싶은 장소를 검색해보세요."
-                  className="w-full pl-10 pr-9 py-2.5 text-sm bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none transition-all"
-                />
-                {query && (
+          {/* 이 아래가 핵심: 세로 flex로 "고정 영역"과 "스크롤 영역"을 분리 */}
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* 고정 영역: 지역탭 ~ "검색된 장소 N곳" 까지 */}
+            <div className="shrink-0">
+              <div className="px-5 pt-4 flex gap-2">
+                {(["강원도", "여수"] as PlaceRegion[]).map((region) => (
                   <button
+                    key={region}
                     type="button"
-                    onClick={handleClearQuery}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                    title="검색어 지우기"
+                    onClick={() => setSelectedRegion(region)}
+                    className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors cursor-pointer ${selectedRegion === region
+                        ? "bg-sky-600 border-sky-600 text-white"
+                        : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                      }`}
                   >
-                    <X className="w-4 h-4" />
+                    {region}
+                    <span className={`ml-1 ${selectedRegion === region ? "text-sky-100" : "text-slate-400"}`}>
+                      {regionTotals[region]}
+                    </span>
                   </button>
-                )}
+                ))}
               </div>
-              <button
-                id="search-sidebar-submit-btn"
-                type="submit"
-                className="shrink-0 w-10 flex items-center justify-center bg-sky-600 hover:bg-sky-700 text-white rounded-xl transition-colors cursor-pointer"
-                title="검색"
-              >
-                <Search className="w-4 h-4" />
-              </button>
-            </form>
 
-            <div className="px-5 pt-3 flex gap-2">
-              {CATEGORY_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setSelectedCategory(opt.value)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer flex items-center gap-1.5 ${selectedCategory === opt.value
-                    ? "bg-sky-600 border-sky-600 text-white"
-                    : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                    }`}
-                >
-                  {opt.icon}
-                  <span>{opt.label}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="px-5 pt-3 flex gap-2">
-              <div
-                className={`flex-1 flex items-center justify-between gap-2 rounded-xl border px-3 py-2 ${soloToggleDisabled ? "border-slate-100 bg-slate-50" : "border-sky-100 bg-sky-50"
-                  }`}
-              >
-                <div>
-                  <p className={`text-xs font-semibold ${soloToggleDisabled ? "text-slate-400" : "text-slate-800"}`}>
-                    혼밥 보장 식당
-                  </p>
+              <form onSubmit={handleSearchSubmit} className="px-5 pt-3 flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    id="search-sidebar-input"
+                    ref={inputRef}
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="가고 싶은 장소를 검색해보세요."
+                    className="w-full pl-10 pr-9 py-2.5 text-sm bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none transition-all"
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      onClick={handleClearQuery}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      title="검색어 지우기"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
                 <button
-                  type="button"
-                  role="switch"
-                  aria-checked={soloOnly}
-                  disabled={soloToggleDisabled}
-                  onClick={() => setSoloOnly((v) => !v)}
-                  className={`shrink-0 w-9 h-5 rounded-full border bg-white transition-colors relative ${soloToggleDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
-                    } ${soloOnly ? "border-sky-500" : "border-slate-300"}`}
+                  id="search-sidebar-submit-btn"
+                  type="submit"
+                  className="shrink-0 w-10 flex items-center justify-center bg-sky-600 hover:bg-sky-700 text-white rounded-xl transition-colors cursor-pointer"
+                  title="검색"
                 >
-                  <span
-                    className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-all ${soloOnly ? "translate-x-[14px] bg-sky-600" : "translate-x-0 bg-slate-300"
+                  <Search className="w-4 h-4" />
+                </button>
+              </form>
+
+              <div className="px-5 pt-3 flex gap-2">
+                {CATEGORY_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSelectedCategory(opt.value)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer flex items-center gap-1.5 ${selectedCategory === opt.value
+                        ? "bg-sky-600 border-sky-600 text-white"
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                  >
+                    {opt.icon}
+                    <span>{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="px-5 pt-3 flex gap-2">
+                <div
+                  className={`flex-1 flex items-center justify-between gap-2 rounded-xl border px-3 py-2 ${soloToggleDisabled ? "border-slate-100 bg-slate-50" : "border-sky-100 bg-sky-50"
+                    }`}
+                >
+                  <div>
+                    <p className={`text-xs font-semibold ${soloToggleDisabled ? "text-slate-400" : "text-slate-800"}`}>
+                      혼밥 보장 식당
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={soloOnly}
+                    disabled={soloToggleDisabled}
+                    onClick={() => setSoloOnly((v) => !v)}
+                    className={`shrink-0 w-9 h-5 rounded-full border bg-white transition-colors relative ${soloToggleDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+                      } ${soloOnly ? "border-sky-500" : "border-slate-300"}`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-all ${soloOnly ? "translate-x-[14px] bg-sky-600" : "translate-x-0 bg-slate-300"
+                        }`}
+                    />
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <select
+                    id="search-sidebar-age-select"
+                    value={ageGroup}
+                    disabled={ageDisabled}
+                    onChange={(e) => setAgeGroup(e.target.value as AgeGroupFilter)}
+                    className={`h-full appearance-none pl-3 pr-7 py-2 text-xs font-semibold border border-slate-200 rounded-xl outline-none bg-white ${ageDisabled ? "text-slate-300 cursor-not-allowed" : "text-slate-700 cursor-pointer hover:bg-slate-50"
+                      }`}
+                  >
+                    {AGE_GROUP_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        나이대 선호: {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none ${ageDisabled ? "text-slate-300" : "text-slate-400"
                       }`}
                   />
-                </button>
+                </div>
               </div>
 
-              <div className="relative">
-                <select
-                  id="search-sidebar-age-select"
-                  value={ageGroup}
-                  disabled={ageDisabled}
-                  onChange={(e) => setAgeGroup(e.target.value as AgeGroupFilter)}
-                  className={`h-full appearance-none pl-3 pr-7 py-2 text-xs font-semibold border border-slate-200 rounded-xl outline-none bg-white ${ageDisabled ? "text-slate-300 cursor-not-allowed" : "text-slate-700 cursor-pointer hover:bg-slate-50"
-                    }`}
-                >
-                  {AGE_GROUP_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      나이대 선호: {opt.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none ${ageDisabled ? "text-slate-300" : "text-slate-400"
-                    }`}
-                />
-              </div>
-            </div>
-
-            <div className="px-5 pt-3 flex items-center justify-between text-xs text-slate-500">
-              <span className="flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                기준:{" "}
-                {referenceSpot?.name ??
-                  (searching ? "검색 중" : submittedQuery ? "카테고리 검색 결과" : "전체 탐색 중")}
-              </span>
-              <div className="flex gap-1.5">
-                {(["연관순위", "거리순"] as const).map((option) => {
-                  const optionDisabled = option === "연관순위" && soloOnly;
-                  return (
-                    <button
-                      key={option}
-                      type="button"
-                      disabled={optionDisabled}
-                      onClick={() => setSortBy(option)}
-                      className={`px-2.5 py-1 rounded-lg font-medium transition-colors border ${optionDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
-                        } ${sortBy === option
-                          ? "border-sky-300 bg-sky-50 text-sky-700"
-                          : "border-transparent text-slate-500 hover:bg-slate-100"
-                        }`}
-                    >
-                      {option}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="px-5 pt-4 pb-2 text-xs font-semibold text-slate-500">
-              {isLoading ? "불러오는 중..." : `검색된 장소 ${results.length}곳`}
-            </div>
-
-            <div className="px-5 pb-6 space-y-4">
-              {isLoading ? (
-                <div className="py-12 text-center text-sm text-slate-400">장소를 불러오는 중입니다...</div>
-              ) : results.length === 0 ? (
-                <div className="py-12 text-center text-sm text-slate-400">검색된 장소가 없어요.</div>
-              ) : (
-                results.map((place) => {
-                  const distanceKm = referenceSpot
-                    ? haversineKm(place.lat, place.lng, referenceSpot.lat, referenceSpot.lng)
-                    : null;
-                  const walkMinutes = distanceKm !== null ? Math.round((distanceKm / 4) * 60) : null;
-
-
-                  return (
-                    <div
-                      key={place.id}
-                      id={`place-item-${place.id}`}
-                      onClick={() => {
-                        setSelectedPlace(place);
-                        toggleCollapsed();
-                      }}
-                      className={`relative bg-white rounded-2xl border p-3 flex gap-3 shadow-2xs hover:shadow-md transition-all cursor-pointer ${selectedPlace?.id === place.id
-                          ? "border-sky-400 ring-2 ring-sky-100"
-                          : "border-slate-200/80"
-                        }`}
-                    >
-                      <div className="w-16 h-16 shrink-0 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-400">
-                        {place.category === "음식점" ? (
-                          <Utensils className="w-6 h-6" />
-                        ) : place.category === "숙박" ? (
-                          <BedDouble className="w-6 h-6" />
-                        ) : (
-                          <Landmark className="w-6 h-6" />
-                        )}
-                      </div>
-
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <h3 className="text-sm font-bold text-slate-900 truncate pr-6">{place.name}</h3>
-                        <p className="text-xs text-slate-500">
-                          <span>{place.category}</span>
-                          {walkMinutes !== null && <span> · 기준점에서 도보 약 {walkMinutes}분</span>}
-                        </p>
-                      </div>
-
+              <div className="px-5 pt-3 flex items-center justify-between text-xs text-slate-500">
+                <span className="flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                  기준:{" "}
+                  {referenceSpot?.name ??
+                    (searching ? "검색 중" : submittedQuery ? "카테고리 검색 결과" : "전체 탐색 중")}
+                </span>
+                <div className="flex gap-1.5">
+                  {(["연관순위", "거리순"] as const).map((option) => {
+                    const optionDisabled = option === "연관순위" && soloOnly;
+                    return (
                       <button
+                        key={option}
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleBookmark(place.id);
-                        }}
-                        className="absolute top-3 right-3 text-slate-300 hover:text-amber-400 cursor-pointer"
-                        title="보관함에 저장"
+                        disabled={optionDisabled}
+                        onClick={() => setSortBy(option)}
+                        className={`px-2.5 py-1 rounded-lg font-medium transition-colors border ${optionDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+                          } ${sortBy === option
+                            ? "border-sky-300 bg-sky-50 text-sky-700"
+                            : "border-transparent text-slate-500 hover:bg-slate-100"
+                          }`}
                       >
-                        <Star
-                          className={`w-4 h-4 ${bookmarked.has(place.id) ? "fill-amber-400 text-amber-400" : ""}`}
-                        />
+                        {option}
                       </button>
-                    </div>
-                  );
-                })
-              )}
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="px-5 pt-4 pb-2 text-xs font-semibold text-slate-500">
+                {isLoading ? "불러오는 중..." : `검색된 장소 ${results.length}곳`}
+              </div>
+            </div>
+
+            {/* 스크롤 영역: 결과 리스트만 */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="px-5 pb-6 space-y-4">
+                {isLoading ? (
+                  <div className="py-12 text-center text-sm text-slate-400">장소를 불러오는 중입니다...</div>
+                ) : results.length === 0 ? (
+                  <div className="py-12 text-center text-sm text-slate-400">검색된 장소가 없어요.</div>
+                ) : (
+                  results.map((place) => {
+                    const distanceKm = referenceSpot
+                      ? haversineKm(place.lat, place.lng, referenceSpot.lat, referenceSpot.lng)
+                      : null;
+                    const walkMinutes = distanceKm !== null ? Math.round((distanceKm / 4) * 60) : null;
+
+                    const originDistanceKm = mapSearchRequest
+                      ? haversineKm(place.lat, place.lng, mapSearchRequest.lat, mapSearchRequest.lng)
+                      : null;
+                    const originWalkMinutes =
+                      originDistanceKm !== null ? Math.round((originDistanceKm / 4) * 60) : null;
+
+                    return (
+                      <div
+                        key={place.id}
+                        id={`place-item-${place.id}`}
+                        onClick={() => {
+                          setSelectedPlace(place);
+                          toggleCollapsed();
+                        }}
+                        className={`relative bg-white rounded-2xl border p-3 flex gap-3 transition-all cursor-pointer ${selectedPlace?.id === place.id
+                            ? "border-sky-400 ring-2 ring-sky-100 shadow-md"
+                            : referenceSpot?.id === place.id
+                              ? "border-slate-200/80 shadow-lg shadow-slate-300/50"
+                              : "border-slate-200/80 shadow-2xs hover:shadow-md"
+                          }`}
+                      >
+                        <div className="w-16 h-16 shrink-0 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-400">
+                          {place.category === "음식점" ? (
+                            <Utensils className="w-6 h-6" />
+                          ) : place.category === "숙박" ? (
+                            <BedDouble className="w-6 h-6" />
+                          ) : (
+                            <Landmark className="w-6 h-6" />
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <h3 className="text-sm font-bold text-slate-900 truncate pr-6">{place.name}</h3>
+                          <p className="text-xs text-slate-500">
+                            <span>{place.category}</span>
+                            {walkMinutes !== null && <span> · 기준점에서 도보 약 {walkMinutes}분</span>}
+                          </p>
+                          {originWalkMinutes !== null && (
+                            <p className="text-xs text-slate-400">검색 위치에서 도보 약 {originWalkMinutes}분</p>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleBookmark(place.id);
+                          }}
+                          className="absolute top-3 right-3 text-slate-300 hover:text-amber-400 cursor-pointer"
+                          title="보관함에 저장"
+                        >
+                          <Star
+                            className={`w-4 h-4 ${bookmarked.has(place.id) ? "fill-amber-400 text-amber-400" : ""}`}
+                          />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div >
+      </div>
     </>
   );
 };
