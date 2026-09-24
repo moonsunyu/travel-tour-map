@@ -6,7 +6,7 @@ import { useSearchSidebar } from "@/context/SearchSidebarContext";
 import { DbPlace, PlaceCategory, PlaceRegion } from "@/lib/places";
 import { reverseGeocode } from "@/lib/kakaoGeocode";
 import MapControls from "@/components/MapControls";
-import { LocateFixed, RefreshCw } from "lucide-react";
+import { LocateFixed, RefreshCw, Undo2 } from "lucide-react";
 
 const REGION_CENTER: Record<PlaceRegion, { lat: number; lng: number }> = {
   강원도: { lat: 37.8228, lng: 128.1555 },
@@ -67,7 +67,6 @@ function markerImageForCategory(category: PlaceCategory) {
   return new window.kakao.maps.MarkerImage(src, new window.kakao.maps.Size(36, 36));
 }
 
-// 기준점 마커: 별 모양 대신 핀(위치 표시) 모양으로. 끝의 뾰족한 부분이 좌표에 정확히 닿도록 offset 지정
 function referencePinImage() {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="40" height="54" viewBox="0 0 40 54">
@@ -78,6 +77,16 @@ function referencePinImage() {
   return new window.kakao.maps.MarkerImage(src, new window.kakao.maps.Size(40, 54), {
     offset: new window.kakao.maps.Point(20, 54),
   });
+}
+
+// 사용자가 실제로 검색을 시작한 좌표(현 지도 중심 / GPS)를 표시하는 작은 마커
+function searchOriginMarkerImage() {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26">
+      <circle cx="13" cy="13" r="10" fill="#2563EB" stroke="white" stroke-width="3"/>
+    </svg>`;
+  const src = `data:image/svg+xml;base64,${btoa(svg)}`;
+  return new window.kakao.maps.MarkerImage(src, new window.kakao.maps.Size(26, 26));
 }
 
 function categoryIconSvg(category: PlaceCategory) {
@@ -119,8 +128,6 @@ function buildDetailCardElement(place: DbPlace, address: string | null, onClose:
     </div>
   `;
   wrapper.appendChild(row);
-
-  // 카드 자체를 클릭해도 지도의 "빈 곳 클릭" 핸들러로 전파되어 카드가 닫히는 걸 방지
   wrapper.onclick = (e) => e.stopPropagation();
 
   return wrapper;
@@ -149,6 +156,7 @@ export default function KakaoMap() {
     results,
     referenceSpot,
     selectedRegion,
+    mapSearchRequest,
     setMapSearchRequest,
     openSearchSidebar,
     setSelectedPlace,
@@ -161,6 +169,8 @@ export default function KakaoMap() {
   const clustererRef = useRef<any>(null);
   const referenceMarkerRef = useRef<any>(null);
   const referenceLabelOverlayRef = useRef<any>(null);
+  const searchOriginMarkerRef = useRef<any>(null);
+  const searchOriginLabelOverlayRef = useRef<any>(null);
   const isFirstRegionEffect = useRef(true);
   const hoverOverlayRef = useRef<any>(null);
   const detailOverlayRef = useRef<any>(null);
@@ -168,6 +178,8 @@ export default function KakaoMap() {
 
   const isProgrammaticMoveRef = useRef(false);
   const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [lastGoodView, setLastGoodView] = useState<{ lat: number; lng: number; level: number } | null>(null);
 
   const [showResearchButton, setShowResearchButton] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -208,8 +220,12 @@ export default function KakaoMap() {
     });
 
     window.kakao.maps.event.addListener(marker, "click", () => {
-      justClickedMarkerRef.current = true; // 이 클릭이 지도 click 핸들러로 이어져 바로 닫히는 걸 방지
+      justClickedMarkerRef.current = true;
       setSelectedPlace(place);
+      openSearchSidebar();
+      setTimeout(() => {
+        justClickedMarkerRef.current = false;
+      }, 0);
     });
   }
 
@@ -240,12 +256,8 @@ export default function KakaoMap() {
         setShowResearchButton(true);
       });
 
-      // 지도의 빈 곳을 클릭하면 상세카드 닫기 (마커 클릭 직후는 무시)
       window.kakao.maps.event.addListener(map, "click", () => {
-        if (justClickedMarkerRef.current) {
-          justClickedMarkerRef.current = false;
-          return;
-        }
+        if (justClickedMarkerRef.current) return;
         setSelectedPlace(null);
       });
     });
@@ -269,6 +281,7 @@ export default function KakaoMap() {
       mapInstanceRef.current.panTo(new window.kakao.maps.LatLng(PENINSULA_CENTER.lat, PENINSULA_CENTER.lng));
     }
     setShowResearchButton(false);
+    setLastGoodView(null);
   }, [selectedRegion]);
 
   // results / referenceSpot이 바뀔 때마다 마커 다시 그리고 범위 맞춤
@@ -318,7 +331,6 @@ export default function KakaoMap() {
         ageGroups: [],
       });
 
-      // "기준 장소" 작은 라벨 — 핀 위쪽에 항상 표시 (호버 없이도 보임)
       const labelEl = document.createElement("div");
       labelEl.style.transform = "translate(-50%, -68px)";
       labelEl.className =
@@ -332,11 +344,56 @@ export default function KakaoMap() {
       hasAny = true;
     }
 
+    // 검색 원좌표(현 지도 중심/GPS)도 범위에 포함시켜서, 기준점과 멀리 떨어져 있어도 한 화면에 같이 보이도록
+    if (mapSearchRequest) {
+      bounds.extend(new window.kakao.maps.LatLng(mapSearchRequest.lat, mapSearchRequest.lng));
+      hasAny = true;
+    }
+
     if (hasAny) {
       markProgrammaticMove();
       mapInstanceRef.current.setBounds(bounds);
+
+      // 지금 이 순간의 뷰를 "정상 뷰"로 저장 (돌아가기 버튼이 사용)
+      const c = mapInstanceRef.current.getCenter();
+      setLastGoodView({
+        lat: c.getLat(),
+        lng: c.getLng(),
+        level: mapInstanceRef.current.getLevel(),
+      });
     }
   }, [results, referenceSpot, kakaoReady]);
+
+  // 검색 원좌표(현 지도 중심/GPS) 마커 — results/referenceSpot과 별개로, mapSearchRequest 자체가 바뀔 때만 갱신
+  useEffect(() => {
+    if (!kakaoReady || !mapInstanceRef.current) return;
+
+    if (searchOriginMarkerRef.current) {
+      searchOriginMarkerRef.current.setMap(null);
+      searchOriginMarkerRef.current = null;
+    }
+    if (searchOriginLabelOverlayRef.current) {
+      searchOriginLabelOverlayRef.current.setMap(null);
+      searchOriginLabelOverlayRef.current = null;
+    }
+
+    if (!mapSearchRequest) return;
+
+    const position = new window.kakao.maps.LatLng(mapSearchRequest.lat, mapSearchRequest.lng);
+
+    const marker = new window.kakao.maps.Marker({ position, image: searchOriginMarkerImage(), zIndex: 8 });
+    marker.setMap(mapInstanceRef.current);
+    searchOriginMarkerRef.current = marker;
+
+    const labelEl = document.createElement("div");
+    labelEl.style.transform = "translate(-50%, -44px)";
+    labelEl.className =
+      "px-2 py-0.5 rounded-full bg-blue-600/90 text-white text-[10px] font-semibold shadow whitespace-nowrap pointer-events-none";
+    labelEl.textContent = "현재 검색 위치";
+    const labelOverlay = new window.kakao.maps.CustomOverlay({ position, content: labelEl, zIndex: 7 });
+    labelOverlay.setMap(mapInstanceRef.current);
+    searchOriginLabelOverlayRef.current = labelOverlay;
+  }, [mapSearchRequest, kakaoReady]);
 
   // 장소 선택 시 그 장소로 지도 이동 + 확대
   useEffect(() => {
@@ -393,7 +450,7 @@ export default function KakaoMap() {
 
     setShowResearchButton(false);
     const label = await reverseGeocode(lat, lng);
-    setMapSearchRequest({ lat, lng, label });
+    setMapSearchRequest({ lat, lng, label: `현 검색 위치: ${label}` });
     openSearchSidebar();
   }
 
@@ -406,7 +463,7 @@ export default function KakaoMap() {
       async (position) => {
         const { latitude, longitude } = position.coords;
         const label = await reverseGeocode(latitude, longitude);
-        setMapSearchRequest({ lat: latitude, lng: longitude, label: `내 위치: ${label}` });
+        setMapSearchRequest({ lat: latitude, lng: longitude, label: `현 검색 위치: ${label}` });
         openSearchSidebar();
         setIsLocating(false);
       },
@@ -416,20 +473,41 @@ export default function KakaoMap() {
     );
   }
 
+  function handleReturnClick() {
+    if (!mapInstanceRef.current || !lastGoodView) return;
+    markProgrammaticMove();
+    const { lat, lng, level } = lastGoodView;
+    mapInstanceRef.current.panTo(new window.kakao.maps.LatLng(lat, lng)); // panTo는 애니메이션과 함께 부드럽게 이동
+    mapInstanceRef.current.setLevel(level);
+    setShowResearchButton(false);
+  }
+
   return (
     <div className="fixed inset-0">
       <div ref={mapContainerRef} className="w-full h-full" />
       <MapControls />
 
       {selectedRegion && showResearchButton && (
-        <button
-          type="button"
-          onClick={handleResearchClick}
-          className="absolute top-20 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 bg-white shadow-lg rounded-full px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          현 지도에서 검색
-        </button>
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2">
+          {lastGoodView && (
+            <button
+              type="button"
+              onClick={handleReturnClick}
+              className="flex items-center gap-1.5 bg-white shadow-lg rounded-full px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+              검색 위치로 돌아가기
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleResearchClick}
+            className="flex items-center gap-1.5 bg-white shadow-lg rounded-full px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            현 지도에서 검색
+          </button>
+        </div>
       )}
 
       {selectedRegion && (
