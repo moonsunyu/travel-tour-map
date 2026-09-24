@@ -24,12 +24,19 @@ export const metadata: Metadata = {
   description: "혼자 떠나는 여행자를 위한 안심 혼여행 가이드 및 회원·인증 서비스",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="ko" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <head>
         <link rel="preconnect" href="https://cdn.jsdelivr.net" />
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css"
+        />
       </head>
       <body className="min-h-full flex flex-col bg-[#F8F9FA] text-[#1E293B]">
         <KakaoScriptLoader />
