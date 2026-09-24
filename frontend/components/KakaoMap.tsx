@@ -1,72 +1,454 @@
-'use client';
-import { useEffect, useRef, useState } from 'react';
+// components/KakaoMap.tsx
+"use client";
 
-type Spot = {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
-  category: string;
+import { useEffect, useRef, useState } from "react";
+import { useSearchSidebar } from "@/context/SearchSidebarContext";
+import { DbPlace, PlaceCategory, PlaceRegion } from "@/lib/places";
+import { reverseGeocode } from "@/lib/kakaoGeocode";
+import MapControls from "@/components/MapControls";
+import { LocateFixed, RefreshCw } from "lucide-react";
+
+const REGION_CENTER: Record<PlaceRegion, { lat: number; lng: number }> = {
+  강원도: { lat: 37.8228, lng: 128.1555 },
+  여수: { lat: 34.7604, lng: 127.6622 },
 };
 
-export default function KakaoMap({ spots, region }: { spots: Spot[]; region: '강원' | '여수' }) {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstance = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
-  const clustererRef = useRef<any>(null);
+const PENINSULA_CENTER = { lat: 36.3, lng: 127.8 };
+const PENINSULA_LEVEL = 12;
+const REGION_LEVEL = 9;
+const SELECTED_PLACE_LEVEL = 2;
+const PROGRAMMATIC_MOVE_GUARD_MS = 700;
 
-  // 핵심 추가: 지도가 실제로 준비됐는지 React가 알 수 있는 상태
-  const [mapReady, setMapReady] = useState(false);
+const CATEGORY_COLOR: Record<PlaceCategory, string> = {
+  음식점: "#F59E0B",
+  관광명소: "#0284C7",
+  숙박: "#7C3AED",
+};
 
-  const REGION_CENTER = {
-    강원: { lat: 37.8228, lng: 128.1555 },
-    여수: { lat: 34.7604, lng: 127.6622 },
+const CATEGORY_CARD_ICON_CLASS: Record<PlaceCategory, string> = {
+  음식점: "bg-amber-50 text-amber-500",
+  관광명소: "bg-sky-50 text-sky-500",
+  숙박: "bg-violet-50 text-violet-500",
+};
+
+const CATEGORY_ICON_PATH: Record<PlaceCategory, string> = {
+  음식점: `
+    <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
+    <path d="M7 2v20" />
+    <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
+  `,
+  관광명소: `
+    <line x1="3" x2="21" y1="22" y2="22" />
+    <line x1="6" x2="6" y1="18" y2="11" />
+    <line x1="10" x2="10" y1="18" y2="11" />
+    <line x1="14" x2="14" y1="18" y2="11" />
+    <line x1="18" x2="18" y1="18" y2="11" />
+    <polygon points="12 2 20 7 4 7" />
+  `,
+  숙박: `
+    <path d="M2 20v-8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v8" />
+    <path d="M4 10V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4" />
+    <path d="M12 4v6" />
+    <path d="M2 18h20" />
+  `,
+};
+
+function markerImageForCategory(category: PlaceCategory) {
+  const color = CATEGORY_COLOR[category];
+  const iconPath = CATEGORY_ICON_PATH[category];
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+      <circle cx="18" cy="18" r="16" fill="${color}" stroke="white" stroke-width="2.5"/>
+      <g transform="translate(9,9) scale(0.75)" stroke="white" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        ${iconPath}
+      </g>
+    </svg>`;
+  const src = `data:image/svg+xml;base64,${btoa(svg)}`;
+  return new window.kakao.maps.MarkerImage(src, new window.kakao.maps.Size(36, 36));
+}
+
+// 기준점 마커: 별 모양 대신 핀(위치 표시) 모양으로. 끝의 뾰족한 부분이 좌표에 정확히 닿도록 offset 지정
+function referencePinImage() {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="54" viewBox="0 0 40 54">
+      <path d="M20 52S4 34 4 20a16 16 0 0 1 32 0c0 14-16 32-16 32Z" fill="#DC2626" stroke="white" stroke-width="2.5"/>
+      <circle cx="20" cy="20" r="7" fill="white"/>
+    </svg>`;
+  const src = `data:image/svg+xml;base64,${btoa(svg)}`;
+  return new window.kakao.maps.MarkerImage(src, new window.kakao.maps.Size(40, 54), {
+    offset: new window.kakao.maps.Point(20, 54),
+  });
+}
+
+function categoryIconSvg(category: PlaceCategory) {
+  return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${CATEGORY_ICON_PATH[category]}</svg>`;
+}
+
+function buildDetailCardElement(place: DbPlace, address: string | null, onClose: () => void): HTMLDivElement {
+  const wrapper = document.createElement("div");
+  wrapper.style.marginLeft = "14px";
+  wrapper.className = "bg-white rounded-2xl shadow-2xl border border-slate-200/80 p-4 w-72 relative";
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className =
+    "absolute top-2 right-2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full cursor-pointer";
+  closeBtn.innerHTML =
+    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  closeBtn.onclick = (e) => {
+    e.stopPropagation();
+    onClose();
   };
+  wrapper.appendChild(closeBtn);
 
+  const row = document.createElement("div");
+  row.className = "flex gap-3";
+  row.innerHTML = `
+    <div class="w-11 h-11 shrink-0 rounded-xl flex items-center justify-center ${CATEGORY_CARD_ICON_CLASS[place.category]}">
+      ${categoryIconSvg(place.category)}
+    </div>
+    <div class="flex-1 min-w-0 space-y-1 pr-4">
+      <h3 class="text-sm font-bold text-slate-900 truncate">${place.name}</h3>
+      <p class="text-xs text-slate-500 flex items-center gap-1.5">
+        <span>${place.category}</span>
+        ${place.soloFriendly
+      ? '<span class="px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-semibold">혼밥 가능</span>'
+      : ""
+    }
+      </p>
+      <p class="text-xs text-slate-500 leading-snug">${address ?? "주소 불러오는 중..."}</p>
+    </div>
+  `;
+  wrapper.appendChild(row);
+
+  // 카드 자체를 클릭해도 지도의 "빈 곳 클릭" 핸들러로 전파되어 카드가 닫히는 걸 방지
+  wrapper.onclick = (e) => e.stopPropagation();
+
+  return wrapper;
+}
+
+function useKakaoReady(): boolean {
+  const [ready, setReady] = useState(false);
   useEffect(() => {
-    if (!window.kakao || !mapRef.current) return;
+    if (window.kakao?.maps?.services) {
+      setReady(true);
+      return;
+    }
+    const interval = setInterval(() => {
+      if (window.kakao?.maps?.services) {
+        setReady(true);
+        clearInterval(interval);
+      }
+    }, 150);
+    return () => clearInterval(interval);
+  }, []);
+  return ready;
+}
+
+export default function KakaoMap() {
+  const {
+    results,
+    referenceSpot,
+    selectedRegion,
+    setMapSearchRequest,
+    openSearchSidebar,
+    setSelectedPlace,
+    selectedPlace,
+  } = useSearchSidebar();
+  const kakaoReady = useKakaoReady();
+
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const clustererRef = useRef<any>(null);
+  const referenceMarkerRef = useRef<any>(null);
+  const referenceLabelOverlayRef = useRef<any>(null);
+  const isFirstRegionEffect = useRef(true);
+  const hoverOverlayRef = useRef<any>(null);
+  const detailOverlayRef = useRef<any>(null);
+  const justClickedMarkerRef = useRef(false);
+
+  const isProgrammaticMoveRef = useRef(false);
+  const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [showResearchButton, setShowResearchButton] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+  const [detailAddress, setDetailAddress] = useState<string | null>(null);
+
+  function markProgrammaticMove() {
+    isProgrammaticMoveRef.current = true;
+    if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
+    programmaticTimeoutRef.current = setTimeout(() => {
+      isProgrammaticMoveRef.current = false;
+    }, PROGRAMMATIC_MOVE_GUARD_MS);
+  }
+
+  function attachHoverAndClick(marker: any, place: DbPlace) {
+    window.kakao.maps.event.addListener(marker, "mouseover", () => {
+      if (hoverOverlayRef.current) hoverOverlayRef.current.setMap(null);
+
+      const content = document.createElement("div");
+      content.style.transform = "translate(-50%, -140%)";
+      content.className =
+        "px-2.5 py-1 rounded-full bg-slate-900 text-white text-xs font-medium shadow-lg whitespace-nowrap";
+      content.textContent = `${place.name} · ${place.category}`;
+
+      const overlay = new window.kakao.maps.CustomOverlay({
+        position: marker.getPosition(),
+        content,
+        zIndex: 20,
+      });
+      overlay.setMap(mapInstanceRef.current);
+      hoverOverlayRef.current = overlay;
+    });
+
+    window.kakao.maps.event.addListener(marker, "mouseout", () => {
+      if (hoverOverlayRef.current) {
+        hoverOverlayRef.current.setMap(null);
+        hoverOverlayRef.current = null;
+      }
+    });
+
+    window.kakao.maps.event.addListener(marker, "click", () => {
+      justClickedMarkerRef.current = true; // 이 클릭이 지도 click 핸들러로 이어져 바로 닫히는 걸 방지
+      setSelectedPlace(place);
+    });
+  }
+
+  // 지도 최초 생성
+  useEffect(() => {
+    if (!kakaoReady || !mapContainerRef.current || mapInstanceRef.current) return;
 
     window.kakao.maps.load(() => {
-      const center = REGION_CENTER[region];
-      const map = new window.kakao.maps.Map(mapRef.current, {
-        center: new window.kakao.maps.LatLng(center.lat, center.lng),
-        level: 7, // 초기값. 마커 있으면 어차피 setBounds가 덮어씀
+      const map = new window.kakao.maps.Map(mapContainerRef.current, {
+        center: new window.kakao.maps.LatLng(PENINSULA_CENTER.lat, PENINSULA_CENTER.lng),
+        level: PENINSULA_LEVEL,
       });
-      mapInstance.current = map;
+      mapInstanceRef.current = map;
+
       clustererRef.current = new window.kakao.maps.MarkerClusterer({
         map,
         averageCenter: true,
         minLevel: 6,
+        disableClickZoom: false,
       });
 
-      setMapReady(true); // 여기서 "이제 지도 준비됐다"고 React에 알려줌
-    });
-  }, [region]);
+      window.kakao.maps.event.addListener(map, "dragend", () => {
+        if (isProgrammaticMoveRef.current) return;
+        setShowResearchButton(true);
+      });
+      window.kakao.maps.event.addListener(map, "zoom_changed", () => {
+        if (isProgrammaticMoveRef.current) return;
+        setShowResearchButton(true);
+      });
 
+      // 지도의 빈 곳을 클릭하면 상세카드 닫기 (마커 클릭 직후는 무시)
+      window.kakao.maps.event.addListener(map, "click", () => {
+        if (justClickedMarkerRef.current) {
+          justClickedMarkerRef.current = false;
+          return;
+        }
+        setSelectedPlace(null);
+      });
+    });
+  }, [kakaoReady]);
+
+  // 지역 전환 시 즉시 대략적인 위치로 이동
   useEffect(() => {
-    // mapReady가 false면(아직 지도 안 만들어졌으면) 그냥 대기
-    if (!mapReady || !mapInstance.current || !window.kakao || spots.length === 0) return;
+    if (!mapInstanceRef.current) return;
+    if (isFirstRegionEffect.current) {
+      isFirstRegionEffect.current = false;
+      return;
+    }
+
+    markProgrammaticMove();
+    if (selectedRegion) {
+      const center = REGION_CENTER[selectedRegion];
+      mapInstanceRef.current.setLevel(REGION_LEVEL);
+      mapInstanceRef.current.panTo(new window.kakao.maps.LatLng(center.lat, center.lng));
+    } else {
+      mapInstanceRef.current.setLevel(PENINSULA_LEVEL);
+      mapInstanceRef.current.panTo(new window.kakao.maps.LatLng(PENINSULA_CENTER.lat, PENINSULA_CENTER.lng));
+    }
+    setShowResearchButton(false);
+  }, [selectedRegion]);
+
+  // results / referenceSpot이 바뀔 때마다 마커 다시 그리고 범위 맞춤
+  useEffect(() => {
+    if (!kakaoReady || !mapInstanceRef.current || !clustererRef.current) return;
 
     clustererRef.current.clear();
-    markersRef.current = [];
+    if (referenceMarkerRef.current) {
+      referenceMarkerRef.current.setMap(null);
+      referenceMarkerRef.current = null;
+    }
+    if (referenceLabelOverlayRef.current) {
+      referenceLabelOverlayRef.current.setMap(null);
+      referenceLabelOverlayRef.current = null;
+    }
 
-    const newMarkers = spots.map((spot) => {
-      const marker = new window.kakao.maps.Marker({
-        position: new window.kakao.maps.LatLng(spot.lat, spot.lng),
-        title: spot.name,
-      });
+    const bounds = new window.kakao.maps.LatLngBounds();
+    let hasAny = false;
+
+    const clusterTargets: DbPlace[] = results.filter((p) => p.id !== referenceSpot?.id);
+
+    const newMarkers = clusterTargets.map((place) => {
+      const position = new window.kakao.maps.LatLng(place.lat, place.lng);
+      bounds.extend(position);
+      hasAny = true;
+      const marker = new window.kakao.maps.Marker({ position, image: markerImageForCategory(place.category) });
+      attachHoverAndClick(marker, place);
       return marker;
     });
 
-    markersRef.current = newMarkers;
     clustererRef.current.addMarkers(newMarkers);
 
-    const bounds = new window.kakao.maps.LatLngBounds();
-    spots.forEach((spot) => {
-      bounds.extend(new window.kakao.maps.LatLng(spot.lat, spot.lng));
-    });
-    mapInstance.current.setBounds(bounds);
-  }, [spots, mapReady]); // ← mapReady를 의존성에 추가한 게 핵심
+    if (referenceSpot) {
+      const position = new window.kakao.maps.LatLng(referenceSpot.lat, referenceSpot.lng);
 
-  return <div ref={mapRef} style={{ width: '100%', height: '100%' }} />;
+      const marker = new window.kakao.maps.Marker({ position, image: referencePinImage(), zIndex: 10 });
+      marker.setMap(mapInstanceRef.current);
+      referenceMarkerRef.current = marker;
+
+      attachHoverAndClick(marker, {
+        id: referenceSpot.id,
+        name: referenceSpot.name,
+        category: "관광명소",
+        lat: referenceSpot.lat,
+        lng: referenceSpot.lng,
+        soloFriendly: false,
+        ageGroups: [],
+      });
+
+      // "기준 장소" 작은 라벨 — 핀 위쪽에 항상 표시 (호버 없이도 보임)
+      const labelEl = document.createElement("div");
+      labelEl.style.transform = "translate(-50%, -68px)";
+      labelEl.className =
+        "px-2 py-0.5 rounded-full bg-slate-900/90 text-white text-[10px] font-semibold shadow whitespace-nowrap pointer-events-none";
+      labelEl.textContent = "기준 장소";
+      const labelOverlay = new window.kakao.maps.CustomOverlay({ position, content: labelEl, zIndex: 9 });
+      labelOverlay.setMap(mapInstanceRef.current);
+      referenceLabelOverlayRef.current = labelOverlay;
+
+      bounds.extend(position);
+      hasAny = true;
+    }
+
+    if (hasAny) {
+      markProgrammaticMove();
+      mapInstanceRef.current.setBounds(bounds);
+    }
+  }, [results, referenceSpot, kakaoReady]);
+
+  // 장소 선택 시 그 장소로 지도 이동 + 확대
+  useEffect(() => {
+    if (!mapInstanceRef.current || !selectedPlace) return;
+    markProgrammaticMove();
+    mapInstanceRef.current.setLevel(SELECTED_PLACE_LEVEL);
+    mapInstanceRef.current.panTo(new window.kakao.maps.LatLng(selectedPlace.lat, selectedPlace.lng));
+  }, [selectedPlace]);
+
+  // 장소 선택 시 주소 조회
+  useEffect(() => {
+    if (!selectedPlace) {
+      setDetailAddress(null);
+      return;
+    }
+    setDetailAddress(null);
+    let cancelled = false;
+    reverseGeocode(selectedPlace.lat, selectedPlace.lng).then((address) => {
+      if (!cancelled) setDetailAddress(address);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPlace]);
+
+  // 선택된 장소 옆에 상세카드(CustomOverlay) 표시
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    if (detailOverlayRef.current) {
+      detailOverlayRef.current.setMap(null);
+      detailOverlayRef.current = null;
+    }
+
+    if (!selectedPlace) return;
+
+    const content = buildDetailCardElement(selectedPlace, detailAddress, () => setSelectedPlace(null));
+    const overlay = new window.kakao.maps.CustomOverlay({
+      position: new window.kakao.maps.LatLng(selectedPlace.lat, selectedPlace.lng),
+      content,
+      xAnchor: 0,
+      yAnchor: 0.5,
+      zIndex: 30,
+    });
+    overlay.setMap(mapInstanceRef.current);
+    detailOverlayRef.current = overlay;
+  }, [selectedPlace, detailAddress]);
+
+  async function handleResearchClick() {
+    if (!mapInstanceRef.current || !selectedRegion) return;
+    const center = mapInstanceRef.current.getCenter();
+    const lat = center.getLat();
+    const lng = center.getLng();
+
+    setShowResearchButton(false);
+    const label = await reverseGeocode(lat, lng);
+    setMapSearchRequest({ lat, lng, label });
+    openSearchSidebar();
+  }
+
+  function handleMyLocationClick() {
+    if (!selectedRegion) return;
+    if (!navigator.geolocation) return;
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        const label = await reverseGeocode(latitude, longitude);
+        setMapSearchRequest({ lat: latitude, lng: longitude, label: `내 위치: ${label}` });
+        openSearchSidebar();
+        setIsLocating(false);
+      },
+      () => {
+        setIsLocating(false);
+      },
+    );
+  }
+
+  return (
+    <div className="fixed inset-0">
+      <div ref={mapContainerRef} className="w-full h-full" />
+      <MapControls />
+
+      {selectedRegion && showResearchButton && (
+        <button
+          type="button"
+          onClick={handleResearchClick}
+          className="absolute top-20 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 bg-white shadow-lg rounded-full px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          현 지도에서 검색
+        </button>
+      )}
+
+      {selectedRegion && (
+        <button
+          type="button"
+          onClick={handleMyLocationClick}
+          disabled={isLocating}
+          className="absolute bottom-24 right-4 z-20 w-11 h-11 rounded-full bg-white shadow-lg flex items-center justify-center text-slate-600 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+          aria-label="내 위치 주변 검색"
+        >
+          <LocateFixed className={`w-5 h-5 ${isLocating ? "animate-pulse" : ""}`} />
+        </button>
+      )}
+
+      {!kakaoReady && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-sm text-slate-500">
+          지도를 불러오는 중...
+        </div>
+      )}
+    </div>
+  );
 }
