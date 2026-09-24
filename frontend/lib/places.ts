@@ -39,6 +39,23 @@ const REGION_TABLE_PREFIX: Record<PlaceRegion, string> = {
 // "혼밥"은 장소 검색이 아니라 혼밥 인증 식당 목록 요청으로 간주
 const SOLO_KEYWORDS = ["혼밥"];
 
+// "숙소", "맛집" 같은 카테고리성 단어는 카카오 키워드 검색이 잘 못 찾아내므로,
+// 카카오를 거치지 않고 우리 DB의 category로 바로 필터링
+// 카테고리성 단어 목록은 AI를 통해 추출함
+const CATEGORY_KEYWORDS: { pattern: RegExp; category: PlaceCategory }[] = [
+  { pattern: /맛집|음식점|식당|레스토랑/, category: "음식점" },
+  { pattern: /카페|커피/, category: "음식점" },
+  { pattern: /숙소|숙박|호텔|펜션|모텔|게스트하우스/, category: "숙박" },
+  { pattern: /관광지|관광명소|명소|볼거리/, category: "관광명소" },
+];
+
+function matchCategoryKeyword(query: string): PlaceCategory | null {
+  for (const { pattern, category } of CATEGORY_KEYWORDS) {
+    if (pattern.test(query)) return category;
+  }
+  return null;
+}
+
 // 카카오 1등 결과와 DB 완전일치가 없을 때, 이 거리(km) 이내의 최근접 DB 장소까지는
 // "같은 지역을 가리키는 것"으로 보고 대신 기준점으로 채택 (옵션 B)
 const FALLBACK_MAX_KM = 5;
