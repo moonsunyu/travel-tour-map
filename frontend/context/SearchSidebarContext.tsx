@@ -4,56 +4,52 @@ import React, { createContext, useContext, useState } from "react";
 import { DbPlace, PlaceRegion, ReferenceSpot } from "@/lib/places";
 
 interface SearchSidebarContextType {
-  isOpen: boolean; // 사이드바가 화면에 보이는지 (false면 완전히 숨김)
+  isOpen: boolean;
   openSearchSidebar: () => void;
-  closeSearchSidebar: () => void;
-
-  isCollapsed: boolean; // isOpen이 true일 때, 얇게 접을지 여부
-  toggleCollapsed: () => void;
+  closeSearchSidebar: () => void; // 소프트 닫기 — 검색 상태 유지
 
   results: DbPlace[];
   setResults: (results: DbPlace[]) => void;
   referenceSpot: ReferenceSpot | null;
   setReferenceSpot: (spot: ReferenceSpot | null) => void;
 
-  selectedRegion: PlaceRegion | null; // null = 지역 미선택(한반도 전체뷰)
+  selectedRegion: PlaceRegion | null;
   setSelectedRegion: (region: PlaceRegion | null) => void;
 
-  selectedPlace: DbPlace | null; // 마커/사이드바 리스트 공통 상세카드용 (6·7단계에서 사용)
+  selectedPlace: DbPlace | null;
   setSelectedPlace: (place: DbPlace | null) => void;
 
-  // "현 지도에서 검색" / "내 위치 주변" 버튼이 채우는 좌표+주소 라벨
+  // 사이드바 리스트 클릭 시에만 지도 이동을 트리거 (마커 클릭과 구분)
+  mapFocusRequest: DbPlace | null;
+  setMapFocusRequest: (place: DbPlace | null) => void;
+
   mapSearchRequest: { lat: number; lng: number; label: string } | null;
   setMapSearchRequest: (req: { lat: number; lng: number; label: string } | null) => void;
+
+  placesLoading: boolean;
+  setPlacesLoading: (loading: boolean) => void;
 }
 
 const SearchSidebarContext = createContext<SearchSidebarContextType | undefined>(undefined);
 
 export const SearchSidebarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [results, setResults] = useState<DbPlace[]>([]);
   const [referenceSpot, setReferenceSpot] = useState<ReferenceSpot | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<PlaceRegion | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<DbPlace | null>(null);
+  const [mapFocusRequest, setMapFocusRequest] = useState<DbPlace | null>(null);
   const [mapSearchRequest, setMapSearchRequest] = useState<{ lat: number; lng: number; label: string } | null>(
     null,
   );
+  const [placesLoading, setPlacesLoading] = useState(true);
 
   return (
     <SearchSidebarContext.Provider
       value={{
         isOpen,
-        openSearchSidebar: () => {
-          setIsOpen(true);
-          setIsCollapsed(false);
-        },
-        closeSearchSidebar: () => {
-          setIsOpen(false);
-          setIsCollapsed(false);
-        },
-        isCollapsed,
-        toggleCollapsed: () => setIsCollapsed((v) => !v),
+        openSearchSidebar: () => setIsOpen(true),
+        closeSearchSidebar: () => setIsOpen(false),
         results,
         setResults,
         referenceSpot,
@@ -62,8 +58,12 @@ export const SearchSidebarProvider: React.FC<{ children: React.ReactNode }> = ({
         setSelectedRegion,
         selectedPlace,
         setSelectedPlace,
+        mapFocusRequest,
+        setMapFocusRequest,
         mapSearchRequest,
         setMapSearchRequest,
+        placesLoading,
+        setPlacesLoading,
       }}
     >
       {children}

@@ -1,7 +1,7 @@
 // components/search/SearchSidebar.tsx
 "use client";
 
-import { BedDouble, ChevronDown, ChevronLeft, ChevronRight, Landmark, MapPin, Search, Star, Utensils, X } from "lucide-react";
+import { BedDouble, ChevronDown, Landmark, MapPin, Search, Star, Utensils, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useSearchSidebar } from "@/context/SearchSidebarContext";
@@ -38,8 +38,6 @@ export const SearchSidebar: React.FC = () => {
   const {
     isOpen,
     closeSearchSidebar,
-    isCollapsed,
-    toggleCollapsed,
     results,
     setResults,
     referenceSpot,
@@ -50,6 +48,8 @@ export const SearchSidebar: React.FC = () => {
     setMapSearchRequest,
     setSelectedPlace,
     selectedPlace,
+    setMapFocusRequest,
+    setPlacesLoading,
   } = useSearchSidebar();
 
   const [query, setQuery] = useState("");
@@ -58,6 +58,7 @@ export const SearchSidebar: React.FC = () => {
   const [soloOnly, setSoloOnly] = useState(false);
   const [ageGroup, setAgeGroup] = useState<AgeGroupFilter>("선택 안함");
   const [sortBy, setSortBy] = useState<"거리순" | "연관순위">("거리순");
+  const [searchNonce, setSearchNonce] = useState(0);
   const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -91,11 +92,11 @@ export const SearchSidebar: React.FC = () => {
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") toggleCollapsed();
+      if (e.key === "Escape") closeSearchSidebar();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, toggleCollapsed]);
+  }, [isOpen, closeSearchSidebar]);
 
   useEffect(() => {
     fetchRegionTotals().then(setRegionTotals);
@@ -301,7 +302,7 @@ export const SearchSidebar: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [submittedQuery, pool, selectedRegion, selectedCategory, soloOnly, ageGroup, sortBy, mapSearchRequest]);
+  }, [submittedQuery, searchNonce, pool, selectedRegion, selectedCategory, soloOnly, ageGroup, sortBy, mapSearchRequest]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -310,6 +311,7 @@ export const SearchSidebar: React.FC = () => {
     }
     setMapSearchRequest(null);
     setSubmittedQuery(query.trim());
+    setSearchNonce((n) => n + 1);
   };
 
   const handleClearQuery = () => {
@@ -329,12 +331,16 @@ export const SearchSidebar: React.FC = () => {
 
   const isLoading = poolLoading || searching;
 
+  useEffect(() => {
+    setPlacesLoading(isLoading);
+  }, [isLoading, setPlacesLoading]);
+
   return (
     <>
       <div
-        className={`fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-300 ${isOpen && !isCollapsed ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        className={`fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-300 ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
           }`}
-        onClick={toggleCollapsed}
+        onClick={closeSearchSidebar}
       />
 
       <div
@@ -342,35 +348,10 @@ export const SearchSidebar: React.FC = () => {
         role="dialog"
         aria-label="검색"
         aria-hidden={!isOpen}
-        className={`fixed top-0 left-0 z-50 h-full bg-white shadow-2xl border-r border-slate-200 flex flex-col transition-all duration-300 overflow-hidden ${!isOpen ? "-translate-x-full w-96" : isCollapsed ? "translate-x-0 w-12" : "translate-x-0 w-96"
+        className={`fixed top-0 left-0 z-50 h-full w-96 bg-white shadow-2xl border-r border-slate-200 flex flex-col transition-transform duration-300 ${isOpen ? "translate-x-0" : "-translate-x-full"
           }`}
       >
-        {isOpen && (
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            aria-label={isCollapsed ? "검색 패널 펼치기" : "검색 패널 접기"}
-            className="absolute top-1/2 -right-4 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white shadow-md border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-50 cursor-pointer"
-          >
-            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-          </button>
-        )}
-
-        {/* 접힌 상태 콘텐츠 */}
-        <div
-          className={`flex-1 flex flex-col items-center pt-6 gap-3 transition-opacity duration-200 ${isCollapsed ? "opacity-100" : "opacity-0 pointer-events-none absolute"
-            }`}
-        >
-          <Image src="/logo.png" alt="혼행 여지도" width={28} height={28} className="shrink-0" />
-          <Search className="w-4 h-4 text-slate-300" />
-        </div>
-
-        {/* 펼쳐진 상태 콘텐츠 */}
-        <div
-          className={`flex-1 flex flex-col overflow-hidden transition-opacity duration-200 ${isCollapsed ? "opacity-0 pointer-events-none absolute" : "opacity-100"
-            }`}
-        >
-          {/* Header (항상 고정) */}
+        <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between p-5 border-b border-slate-100 shrink-0">
             <div className="flex items-center gap-2.5">
               <Image src="/logo.png" alt="홀로트립 로고" width={40} height={40} className="shrink-0" priority />
@@ -389,9 +370,7 @@ export const SearchSidebar: React.FC = () => {
             </button>
           </div>
 
-          {/* 이 아래가 핵심: 세로 flex로 "고정 영역"과 "스크롤 영역"을 분리 */}
           <div className="flex-1 flex flex-col min-h-0">
-            {/* 고정 영역: 지역탭 ~ "검색된 장소 N곳" 까지 */}
             <div className="shrink-0">
               <div className="px-5 pt-4 flex gap-2">
                 {(["강원도", "여수"] as PlaceRegion[]).map((region) => (
@@ -544,7 +523,6 @@ export const SearchSidebar: React.FC = () => {
               </div>
             </div>
 
-            {/* 스크롤 영역: 결과 리스트만 */}
             <div className="flex-1 overflow-y-auto">
               <div className="px-5 pb-6 space-y-4">
                 {isLoading ? (
@@ -570,7 +548,8 @@ export const SearchSidebar: React.FC = () => {
                         id={`place-item-${place.id}`}
                         onClick={() => {
                           setSelectedPlace(place);
-                          toggleCollapsed();
+                          setMapFocusRequest(place);
+                          closeSearchSidebar();
                         }}
                         className={`relative bg-white rounded-2xl border p-3 flex gap-3 transition-all cursor-pointer ${selectedPlace?.id === place.id
                             ? "border-sky-400 ring-2 ring-sky-100 shadow-md"

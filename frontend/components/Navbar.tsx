@@ -80,9 +80,8 @@ export const Navbar: React.FC = () => {
               <Link
                 id="nav-mypage-btn"
                 href="/mypage"
-                className={`flex items-center gap-2.5 p-1 pl-2 pr-3 rounded-full border transition-all cursor-pointer group ${
-                  isMyPage ? "bg-sky-50 border-sky-300" : "bg-slate-50 hover:bg-slate-100 border-slate-200"
-                }`}
+                className={`flex items-center gap-2.5 p-1 pl-2 pr-3 rounded-full border transition-all cursor-pointer group ${isMyPage ? "bg-sky-50 border-sky-300" : "bg-slate-50 hover:bg-slate-100 border-slate-200"
+                  }`}
                 title="마이페이지"
               >
                 <div className="w-7 h-7 rounded-full overflow-hidden border border-slate-200 bg-white">

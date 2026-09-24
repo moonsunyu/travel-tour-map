@@ -182,6 +182,7 @@ export default function KakaoMap() {
     openSearchSidebar,
     setSelectedPlace,
     selectedPlace,
+    mapFocusRequest,
     placesLoading,
   } = useSearchSidebar();
   const kakaoReady = useKakaoReady();
@@ -203,7 +204,9 @@ export default function KakaoMap() {
   const isProgrammaticMoveRef = useRef(false);
   const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [lastGoodView, setLastGoodView] = useState<{ lat: number; lng: number; level: number } | null>(null);
+  const returnBoundsRef = useRef<any>(null);
+  const returnCenterRef = useRef<any>(null);
+  const [hasReturnTarget, setHasReturnTarget] = useState(false);
   const [showResearchButton, setShowResearchButton] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [detailAddress, setDetailAddress] = useState<string | null>(null);
@@ -256,7 +259,6 @@ export default function KakaoMap() {
     window.kakao.maps.event.addListener(marker, "click", () => {
       justClickedMarkerRef.current = true;
       setSelectedPlace(place);
-      openSearchSidebar();
       setTimeout(() => {
         justClickedMarkerRef.current = false;
       }, 0);
@@ -317,7 +319,9 @@ export default function KakaoMap() {
       mapInstanceRef.current.panTo(new window.kakao.maps.LatLng(PENINSULA_CENTER.lat, PENINSULA_CENTER.lng));
     }
     setShowResearchButton(false);
-    setLastGoodView(null);
+    returnBoundsRef.current = null;
+    returnCenterRef.current = null;
+    setHasReturnTarget(false);
   }, [selectedRegion]);
 
   // 새 지역의 pool/검색 결과 로딩이 끝나면(=placesLoading이 false가 되면) 오버레이 해제
@@ -414,20 +418,39 @@ export default function KakaoMap() {
     }
 
     if (mapSearchRequest) {
-      bounds.extend(new window.kakao.maps.LatLng(mapSearchRequest.lat, mapSearchRequest.lng));
-      hasAny = true;
-    }
+      // 검색 위치가 항상 정중앙에 오도록, 그 좌표를 중심으로 "대칭인" 사각형을 만들어서 fit.
+      // 기준 장소가 멀리 있으면 대칭 범위도 그만큼 커져서 자동으로 더 멀리(축소) 보이면서도
+      // 검색 위치는 여전히 정중앙을 유지함.
+      const originLat = mapSearchRequest.lat;
+      const originLng = mapSearchRequest.lng;
 
-    if (hasAny) {
+      let maxLatOffset = 0.01;
+      let maxLngOffset = 0.01;
+      if (referenceSpot) {
+        maxLatOffset = Math.max(maxLatOffset, Math.abs(referenceSpot.lat - originLat));
+        maxLngOffset = Math.max(maxLngOffset, Math.abs(referenceSpot.lng - originLng));
+      }
+
+      const symmetricBounds = new window.kakao.maps.LatLngBounds(
+        new window.kakao.maps.LatLng(originLat - maxLatOffset, originLng - maxLngOffset),
+        new window.kakao.maps.LatLng(originLat + maxLatOffset, originLng + maxLngOffset),
+      );
+
+      markProgrammaticMove();
+      mapInstanceRef.current.setBounds(symmetricBounds);
+      // setBounds의 내부 여백 계산으로 중심이 아주 살짝 어긋날 수 있어 한 번 더 명시적으로 고정
+      mapInstanceRef.current.setCenter(new window.kakao.maps.LatLng(originLat, originLng));
+
+      returnBoundsRef.current = symmetricBounds;
+      returnCenterRef.current = new window.kakao.maps.LatLng(originLat, originLng);
+      setHasReturnTarget(true);
+    } else if (hasAny) {
       markProgrammaticMove();
       mapInstanceRef.current.setBounds(bounds);
 
-      const c = mapInstanceRef.current.getCenter();
-      setLastGoodView({
-        lat: c.getLat(),
-        lng: c.getLng(),
-        level: mapInstanceRef.current.getLevel(),
-      });
+      returnBoundsRef.current = bounds;
+      returnCenterRef.current = null;
+      setHasReturnTarget(true)
     }
 
     hasShownResultsRef.current = true;
@@ -464,13 +487,14 @@ export default function KakaoMap() {
     searchOriginLabelOverlayRef.current = labelOverlay;
   }, [mapSearchRequest, kakaoReady]);
 
-  // 장소 선택 시 그 장소로 지도 이동 + 확대
+  // 사이드바 리스트에서 선택했을 때만(마커 클릭은 제외) 지도 이동 + 확대
   useEffect(() => {
-    if (!mapInstanceRef.current || !selectedPlace) return;
+    if (!mapInstanceRef.current || !mapFocusRequest) return;
     markProgrammaticMove();
     mapInstanceRef.current.setLevel(SELECTED_PLACE_LEVEL);
-    mapInstanceRef.current.panTo(new window.kakao.maps.LatLng(selectedPlace.lat, selectedPlace.lng));
-  }, [selectedPlace]);
+    mapInstanceRef.current.panTo(new window.kakao.maps.LatLng(mapFocusRequest.lat, mapFocusRequest.lng));
+  }, [mapFocusRequest]);
+
 
   // 장소 선택 시 주소 조회
   useEffect(() => {
@@ -543,10 +567,12 @@ export default function KakaoMap() {
   }
 
   function handleReturnClick() {
-    if (!mapInstanceRef.current || !lastGoodView) return;
+    if (!mapInstanceRef.current || !returnBoundsRef.current) return;
     markProgrammaticMove();
-    mapInstanceRef.current.panTo(new window.kakao.maps.LatLng(lastGoodView.lat, lastGoodView.lng));
-    mapInstanceRef.current.setLevel(lastGoodView.level);
+    mapInstanceRef.current.setBounds(returnBoundsRef.current);
+    if (returnCenterRef.current) {
+      mapInstanceRef.current.setCenter(returnCenterRef.current);
+    }
     setShowResearchButton(false);
   }
 
@@ -559,7 +585,7 @@ export default function KakaoMap() {
 
       {selectedRegion && showResearchButton && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2">
-          {lastGoodView && (
+          {hasReturnTarget && (
             <button
               type="button"
               onClick={handleReturnClick}
