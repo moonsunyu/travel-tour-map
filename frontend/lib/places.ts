@@ -169,7 +169,7 @@ function looksLikeSpecificPlace(query: string, topResult: any): boolean {
 }
 
 /** 특정 장소 하나를 기준점 삼아 연관장소(RANK순)+혼밥식당을 조립 */
-async function buildSingleModeResult(
+export async function buildSingleModeResult(
   target: DbPlace,
   region: PlaceRegion,
   pool: DbPlace[],
@@ -302,4 +302,46 @@ export async function searchAndGetResults(
   const matched = intersectWithPool(kakaoResults, pool);
   if (matched.length === 0) return { mode: "empty" };
   return { mode: "keyword", matches: matched };
+}
+
+/** 좌표에서 가장 가까운 중심관광지(SPOT)를 찾음. 거리 상한 없음(옵션 B의 5km 제한과는 별개) */
+async function findNearestHub(lat: number, lng: number, region: PlaceRegion): Promise<DbPlace | null> {
+  const supabase = createClient();
+  const prefix = REGION_TABLE_PREFIX[region];
+
+  const { data: hubs, error } = await supabase
+    .from(`T_${prefix}_SPOT`)
+    .select('"SPOT_ID","SPOT_NAME","CATEGORY","LATITUDE","LONGITUDE"')
+    .not('"LATITUDE"', "is", null);
+
+  console.log(`[findNearestHub] ${prefix} 조회 결과:`, hubs?.length, "에러:", error);
+
+  if (!hubs || hubs.length === 0) return null;
+
+  const nearest = [...hubs].sort(
+    (a: any, b: any) =>
+      haversineKm(a.LATITUDE, a.LONGITUDE, lat, lng) - haversineKm(b.LATITUDE, b.LONGITUDE, lat, lng),
+  )[0] as any;
+
+  return {
+    id: nearest.SPOT_ID,
+    name: nearest.SPOT_NAME,
+    category: categorizeSpot(nearest.CATEGORY),
+    lat: nearest.LATITUDE,
+    lng: nearest.LONGITUDE,
+    soloFriendly: false,
+    ageGroups: [],
+  };
+}
+
+/** "현 지도에서 검색" / "내 위치 주변"에서 사용. 좌표 → 최근접 중심관광지 → 연관장소+식당 조립 */
+export async function searchFromCoordinates(
+  lat: number,
+  lng: number,
+  region: PlaceRegion,
+  pool: DbPlace[],
+): Promise<SearchResult> {
+  const nearestHub = await findNearestHub(lat, lng, region);
+  if (!nearestHub) return { mode: "empty" };
+  return buildSingleModeResult(nearestHub, region, pool);
 }
