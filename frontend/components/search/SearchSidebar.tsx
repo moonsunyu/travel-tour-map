@@ -64,7 +64,9 @@ export const SearchSidebar: React.FC = () => {
   const [ageGroup, setAgeGroup] = useState<AgeGroupFilter>("선택 안함");
   const [sortBy, setSortBy] = useState<"거리순" | "연관순위">("거리순");
   const [searchNonce, setSearchNonce] = useState(0);
+  const resultsScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   const [pool, setPool] = useState<DbPlace[]>([]);
   const [poolLoading, setPoolLoading] = useState(false);
@@ -79,6 +81,11 @@ export const SearchSidebar: React.FC = () => {
   const ageDisabled = soloOnly || selectedCategory === "음식점" || selectedCategory === "숙박";
 
   const handleFullClose = () => {
+    const hasActiveSearch = submittedQuery || mapSearchRequest;
+    if (hasActiveSearch) {
+      const confirmed = window.confirm("검색 내역이 초기화됩니다. 계속할까요?");
+      if (!confirmed) return;
+    }
     setQuery("");
     setSubmittedQuery("");
     setMapSearchRequest(null);
@@ -142,8 +149,27 @@ export const SearchSidebar: React.FC = () => {
   useEffect(() => {
     if (!selectedPlace) return;
     const el = document.getElementById(`place-item-${selectedPlace.id}`);
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [selectedPlace]);
+
+
+  useEffect(() => {
+    resultsScrollRef.current?.scrollTo({ top: 0 });
+    setShowScrollTop(false);
+  }, [results]);
+
+
+  useEffect(() => {
+    const el = resultsScrollRef.current;
+    if (!el) return;
+
+    const handleScroll = () => {
+      setShowScrollTop(el.scrollTop > 200); // 200px 이상 내려가면 버튼 표시
+    };
+
+    el.addEventListener("scroll", handleScroll);
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
 
   useEffect(() => {
     if (pool.length === 0) {
@@ -515,11 +541,20 @@ export const SearchSidebar: React.FC = () => {
               </div>
 
               <div className="px-5 pt-4 pb-2 text-xs font-semibold text-slate-500">
-                {isLoading ? "불러오는 중..." : `검색된 장소 ${results.length}곳`}
+                {isLoading ? (
+                  "불러오는 중..."
+                ) : (
+                  <>
+                    {`검색된 장소 ${results.length}곳`}
+                    {ageGroup !== "선택 안함" && (
+                      <span className="text-slate-400 font-normal"> 관광명소 전용 내용입니다 </span>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div ref={resultsScrollRef} className="flex-1 overflow-y-auto relative">
               <div className="px-5 pb-6 space-y-4">
                 {isLoading ? (
                   <div className="py-12 text-center text-sm text-slate-400">장소를 불러오는 중입니다...</div>
@@ -600,6 +635,18 @@ export const SearchSidebar: React.FC = () => {
             </div>
           </div>
         </div>
+        {showScrollTop && (
+          <button
+            type="button"
+            onClick={() =>
+              resultsScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })
+            }
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center justify-center gap-0.5 bg-white text-slate-600 text-[10px] font-semibold w-30 h-10 rounded-full shadow-lg border border-slate-200 cursor-pointer hover:bg-slate-50"
+          >
+            <span className="text-sm">↑</span>
+            <span>맨위로</span>
+          </button>
+        )}
       </div>
     </>
   );
