@@ -83,7 +83,7 @@ export const SearchSidebar: React.FC = () => {
   const handleFullClose = () => {
     const hasActiveSearch = submittedQuery || mapSearchRequest;
     if (hasActiveSearch) {
-      const confirmed = window.confirm("검색 내역이 초기화됩니다. 계속할까요?");
+      const confirmed = window.confirm("검색 위치 내역이 초기화됩니다. 계속할까요?");
       if (!confirmed) return;
     }
     setQuery("");
@@ -360,7 +360,7 @@ export const SearchSidebar: React.FC = () => {
   return (
     <>
       <div
-        className={`fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-300 ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        className={`fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-200 ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
           }`}
         onClick={closeSearchSidebar}
       />
@@ -370,7 +370,7 @@ export const SearchSidebar: React.FC = () => {
         role="dialog"
         aria-label="검색"
         aria-hidden={!isOpen}
-        className={`fixed top-0 left-0 z-50 h-full w-96 bg-white shadow-2xl border-r border-slate-200 flex flex-col transition-transform duration-300 ${isOpen ? "translate-x-0" : "-translate-x-full"
+        className={`fixed top-0 left-0 z-50 h-full w-96 bg-white shadow-2xl border-r border-slate-200 flex flex-col transition-transform duration-200 ${isOpen ? "translate-x-0" : "-translate-x-full"
           }`}
       >
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -600,7 +600,22 @@ export const SearchSidebar: React.FC = () => {
                         </div>
 
                         <div className="flex-1 min-w-0 space-y-1">
-                          <h3 className="text-sm font-bold text-slate-900 truncate pr-6">{place.name}</h3>
+                          <div className="flex items-center gap-1.5 pr-6">
+                            <h3 className="text-sm font-bold text-slate-900 truncate">{place.name}</h3>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMapSearchRequest(null);
+                                setQuery(place.name);
+                                setSubmittedQuery(place.name);
+                                setSearchNonce((n) => n + 1);
+                              }}
+                              className="shrink-0 text-[10px] text-slate-400 hover:text-sky-600 cursor-pointer whitespace-nowrap"
+                            >
+                              이 장소로 검색
+                            </button>
+                          </div>
                           <p className="text-xs text-slate-500">
                             <span>{place.category}</span>
                             {walkMinutes !== null && <span> · 기준점에서 도보 약 {walkMinutes}분</span>}
