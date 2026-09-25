@@ -14,8 +14,8 @@ const REGION_CENTER: Record<PlaceRegion, { lat: number; lng: number }> = {
 };
 
 const REGION_OVERVIEW_COLOR: Record<PlaceRegion, string> = {
-  강원도: "#4F46E5", // indigo
-  여수: "#0D9488", // teal
+  강원도: "#4F46E5",
+  여수: "#0D9488",
 };
 
 const PENINSULA_CENTER = { lat: 36.3, lng: 127.8 };
@@ -23,6 +23,16 @@ const PENINSULA_LEVEL = 13;
 const REGION_LEVEL = 9;
 const SELECTED_PLACE_LEVEL = 2;
 const PROGRAMMATIC_MOVE_GUARD_MS = 700;
+
+// 사이드바(w-96=384px)와 상세카드(w-72=288px) 폭 — 균등 배치 계산에 사용
+const SIDEBAR_WIDTH_PX = 384;
+const CARD_WIDTH_PX = 288;
+const CARD_GAP_PX = 14;
+const MARKER_ICON_HALF_PX = 18;
+
+// 사이드바 배경(z-40)보다 높게 잡아서, 선택된 마커+카드만 어두운 막 위로 튀어나오게
+const HIGHLIGHT_Z_INDEX = 50;
+const DETAIL_CARD_Z_INDEX = 9999;
 
 const CATEGORY_COLOR: Record<PlaceCategory, string> = {
   음식점: "#F59E0B",
@@ -97,10 +107,16 @@ function categoryIconSvg(category: PlaceCategory) {
   return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${CATEGORY_ICON_PATH[category]}</svg>`;
 }
 
-function buildDetailCardElement(place: DbPlace, address: string | null, onClose: () => void): HTMLDivElement {
+/** 상세카드 DOM 생성. 주소는 한 줄로 말줄임(...) 처리, 장소명은 링크처럼 클릭 가능 */
+function buildDetailCardElement(
+  place: DbPlace,
+  address: string | null,
+  onClose: () => void,
+): HTMLDivElement {
   const wrapper = document.createElement("div");
   wrapper.style.marginLeft = "14px";
-  wrapper.className = "bg-white rounded-2xl shadow-2xl border border-slate-200/80 p-4 w-72 relative";
+  wrapper.style.width = "288px";
+  wrapper.className = "bg-white rounded-2xl shadow-2xl border border-slate-200/80 p-4 relative";
 
   const closeBtn = document.createElement("button");
   closeBtn.className =
@@ -115,23 +131,58 @@ function buildDetailCardElement(place: DbPlace, address: string | null, onClose:
 
   const row = document.createElement("div");
   row.className = "flex gap-3";
-  row.innerHTML = `
-    <div class="w-11 h-11 shrink-0 rounded-xl flex items-center justify-center ${CATEGORY_CARD_ICON_CLASS[place.category]}">
-      ${categoryIconSvg(place.category)}
-    </div>
-    <div class="flex-1 min-w-0 space-y-1 pr-4">
-      <h3 class="text-sm font-bold text-slate-900 truncate">${place.name}</h3>
-      <p class="text-xs text-slate-500 flex items-center gap-1.5">
-        <span>${place.category}</span>
-        ${place.soloFriendly
+
+  const iconBox = document.createElement("div");
+  iconBox.className = `w-11 h-11 shrink-0 rounded-xl flex items-center justify-center ${CATEGORY_CARD_ICON_CLASS[place.category]}`;
+  iconBox.innerHTML = categoryIconSvg(place.category);
+  row.appendChild(iconBox);
+
+  const metaCol = document.createElement("div");
+  metaCol.className = "flex-1 min-w-0 space-y-1 pr-4";
+
+  const nameRow = document.createElement("div");
+  nameRow.className = "relative flex items-center gap-1.5";
+
+  const nameEl = document.createElement("h3");
+  nameEl.className = "text-sm font-bold text-slate-900 truncate hover:text-sky-600 transition-colors cursor-default";
+  nameEl.textContent = place.name;
+  nameRow.appendChild(nameEl);
+
+  const hoverTip = document.createElement("div");
+  hoverTip.className =
+    "absolute -top-8 left-0 px-2.5 py-1 rounded-full bg-slate-900 text-white text-[10px] font-medium shadow-lg whitespace-nowrap opacity-0 pointer-events-none transition-opacity duration-150";
+  hoverTip.textContent = "사이드바를 열어보세요!";
+  nameRow.appendChild(hoverTip);
+
+  nameEl.addEventListener("mouseenter", () => {
+    hoverTip.style.opacity = "1";
+  });
+  nameEl.addEventListener("mouseleave", () => {
+    hoverTip.style.opacity = "0";
+  });
+
+  metaCol.appendChild(nameRow);
+
+  const categoryRow = document.createElement("p");
+  categoryRow.className = "text-xs text-slate-500 flex items-center gap-1.5";
+  categoryRow.innerHTML = `
+      <span>${place.category}</span>
+      ${place.soloFriendly
       ? '<span class="px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-semibold">혼밥 가능</span>'
       : ""
     }
-      </p>
-      <p class="text-xs text-slate-500 leading-snug">${address ?? "주소 불러오는 중..."}</p>
-    </div>
-  `;
+    `;
+  metaCol.appendChild(categoryRow);
+
+  const addressRow = document.createElement("p");
+  addressRow.className = "text-xs text-slate-500 truncate";
+  addressRow.title = address ?? "";
+  addressRow.textContent = address ?? "주소 불러오는 중...";
+  metaCol.appendChild(addressRow);
+
+  row.appendChild(metaCol);
   wrapper.appendChild(row);
+
   wrapper.onclick = (e) => e.stopPropagation();
 
   return wrapper;
@@ -201,6 +252,10 @@ export default function KakaoMap() {
   const justClickedMarkerRef = useRef(false);
   const hasShownResultsRef = useRef(false);
 
+  // 장소 id → 마커 인스턴스 매핑 (선택된 장소의 마커를 찾아 z-index를 올리기 위함)
+  const markersByIdRef = useRef<Map<string, any>>(new Map());
+  const highlightedMarkerRef = useRef<any>(null);
+
   const isProgrammaticMoveRef = useRef(false);
   const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -259,6 +314,11 @@ export default function KakaoMap() {
     window.kakao.maps.event.addListener(marker, "click", () => {
       justClickedMarkerRef.current = true;
       setSelectedPlace(place);
+
+      // 마커 클릭 시 지도를 부드럽게 그 위치로 이동 (확대/사이드바는 그대로)
+      markProgrammaticMove();
+      mapInstanceRef.current?.panTo(marker.getPosition());
+
       setTimeout(() => {
         justClickedMarkerRef.current = false;
       }, 0);
@@ -307,7 +367,7 @@ export default function KakaoMap() {
       return;
     }
 
-    setIsRegionSwitching(true); // 새 지역 데이터가 다 로딩될 때까지 오버레이로 가림
+    setIsRegionSwitching(true);
 
     markProgrammaticMove();
     if (selectedRegion) {
@@ -324,15 +384,10 @@ export default function KakaoMap() {
     setHasReturnTarget(false);
   }, [selectedRegion]);
 
-  // 새 지역의 pool/검색 결과 로딩이 끝나면(=placesLoading이 false가 되면) 오버레이 해제
-  useEffect(() => {
-    if (!placesLoading) setIsRegionSwitching(false);
-  }, [placesLoading]);
-
-  // 한반도 전체뷰: 지역별 개요 원 두 개 표시 (지역 미선택 상태일 때만)
+  // 한반도 전체뷰: 지역별 개요 원
   useEffect(() => {
     if (!kakaoReady || !mapInstanceRef.current || !clustererRef.current) return;
-    if (selectedRegion) return; // 지역 선택 시엔 아래의 개별 마커 effect가 처리
+    if (selectedRegion) return;
     if (!regionTotals) return;
 
     clustererRef.current.clear();
@@ -355,13 +410,18 @@ export default function KakaoMap() {
     hasShownResultsRef.current = true;
   }, [selectedRegion, regionTotals, kakaoReady]);
 
-  // 지역 선택 시: 개요 원 지우고, 기존처럼 개별 마커/클러스터링
+  useEffect(() => {
+    if (!placesLoading) setIsRegionSwitching(false);
+  }, [placesLoading]);
+
+  // 지역 선택 시: 개별 마커/클러스터링
   useEffect(() => {
     if (!kakaoReady || !mapInstanceRef.current || !clustererRef.current) return;
-    if (!selectedRegion) return; // 한반도 뷰는 위의 effect가 처리
+    if (!selectedRegion) return;
 
     clearOverviewOverlays();
     clustererRef.current.clear();
+    markersByIdRef.current.clear();
     if (referenceMarkerRef.current) {
       referenceMarkerRef.current.setMap(null);
       referenceMarkerRef.current = null;
@@ -381,7 +441,9 @@ export default function KakaoMap() {
       bounds.extend(position);
       hasAny = true;
       const marker = new window.kakao.maps.Marker({ position, image: markerImageForCategory(place.category) });
+      marker.__baseZIndex = 1;
       attachHoverAndClick(marker, place);
+      markersByIdRef.current.set(place.id, marker);
       return marker;
     });
 
@@ -391,8 +453,10 @@ export default function KakaoMap() {
       const position = new window.kakao.maps.LatLng(referenceSpot.lat, referenceSpot.lng);
 
       const marker = new window.kakao.maps.Marker({ position, image: referencePinImage(), zIndex: 10 });
+      marker.__baseZIndex = 10;
       marker.setMap(mapInstanceRef.current);
       referenceMarkerRef.current = marker;
+      markersByIdRef.current.set(referenceSpot.id, marker);
 
       attachHoverAndClick(marker, {
         id: referenceSpot.id,
@@ -418,9 +482,6 @@ export default function KakaoMap() {
     }
 
     if (mapSearchRequest) {
-      // 검색 위치가 항상 정중앙에 오도록, 그 좌표를 중심으로 "대칭인" 사각형을 만들어서 fit.
-      // 기준 장소가 멀리 있으면 대칭 범위도 그만큼 커져서 자동으로 더 멀리(축소) 보이면서도
-      // 검색 위치는 여전히 정중앙을 유지함.
       const originLat = mapSearchRequest.lat;
       const originLng = mapSearchRequest.lng;
 
@@ -438,7 +499,6 @@ export default function KakaoMap() {
 
       markProgrammaticMove();
       mapInstanceRef.current.setBounds(symmetricBounds);
-      // setBounds의 내부 여백 계산으로 중심이 아주 살짝 어긋날 수 있어 한 번 더 명시적으로 고정
       mapInstanceRef.current.setCenter(new window.kakao.maps.LatLng(originLat, originLng));
 
       returnBoundsRef.current = symmetricBounds;
@@ -450,7 +510,7 @@ export default function KakaoMap() {
 
       returnBoundsRef.current = bounds;
       returnCenterRef.current = null;
-      setHasReturnTarget(true)
+      setHasReturnTarget(true);
     }
 
     hasShownResultsRef.current = true;
@@ -487,7 +547,7 @@ export default function KakaoMap() {
     searchOriginLabelOverlayRef.current = labelOverlay;
   }, [mapSearchRequest, kakaoReady]);
 
-  // 사이드바 리스트에서 선택했을 때만(마커 클릭은 제외) 지도 이동 + 확대
+  // 사이드바 리스트에서 선택했을 때만 지도 이동 + 확대
   useEffect(() => {
     if (!mapInstanceRef.current || !mapFocusRequest) return;
     markProgrammaticMove();
@@ -495,6 +555,20 @@ export default function KakaoMap() {
     mapInstanceRef.current.panTo(new window.kakao.maps.LatLng(mapFocusRequest.lat, mapFocusRequest.lng));
   }, [mapFocusRequest]);
 
+  // 선택된 장소의 마커 z-index를 사이드바 배경보다 높여서, 흐려진 지도 위로 튀어나오게 함
+  useEffect(() => {
+    const prev = highlightedMarkerRef.current;
+    if (prev) {
+      prev.setZIndex(prev.__baseZIndex ?? 1);
+      highlightedMarkerRef.current = null;
+    }
+    if (!selectedPlace) return;
+    const marker = markersByIdRef.current.get(selectedPlace.id);
+    if (marker) {
+      marker.setZIndex(HIGHLIGHT_Z_INDEX);
+      highlightedMarkerRef.current = marker;
+    }
+  }, [selectedPlace]);
 
   // 장소 선택 시 주소 조회
   useEffect(() => {
@@ -512,6 +586,39 @@ export default function KakaoMap() {
     };
   }, [selectedPlace]);
 
+  /**
+   * 상세카드의 장소명을 클릭했을 때: 사이드바를 열고, [사이드바 | 마커+카드]가
+   * 균등 간격으로 배치되도록 지도 중심을 픽셀 단위로 이동시킴.
+   * kakao의 Projection(좌표↔화면픽셀 변환)을 이용해, 마커의 화면상 x좌표가
+   * 원하는 위치(사이드바 폭 + 여백)에 오도록 지도 중심 좌표를 재계산.
+   */
+  function handleOpenSidebarFromCard() {
+    openSearchSidebar();
+
+    requestAnimationFrame(() => {
+      const map = mapInstanceRef.current;
+      if (!map || !selectedPlace || !mapContainerRef.current) {
+        return;
+      }
+      const projection = map.getProjection();
+      const markerPos = new window.kakao.maps.LatLng(selectedPlace.lat, selectedPlace.lng);
+      const markerPoint = projection.containerPointFromCoords(markerPos);
+
+      const viewportWidth = mapContainerRef.current.clientWidth;
+      const groupWidth = MARKER_ICON_HALF_PX * 2 + CARD_GAP_PX + CARD_WIDTH_PX;
+      const gap = Math.max(16, (viewportWidth - SIDEBAR_WIDTH_PX - groupWidth) / 2);
+      const desiredX = SIDEBAR_WIDTH_PX + gap + MARKER_ICON_HALF_PX;
+      const deltaX = desiredX - markerPoint.x;
+
+      const centerPoint = projection.containerPointFromCoords(map.getCenter());
+      const targetPoint = new window.kakao.maps.Point(centerPoint.x - deltaX, centerPoint.y);
+      const targetCoords = projection.coordsFromContainerPoint(targetPoint);
+
+      markProgrammaticMove();
+      map.panTo(targetCoords);
+    });
+  }
+
   // 선택된 장소 옆에 상세카드(CustomOverlay) 표시
   useEffect(() => {
     if (!mapInstanceRef.current) return;
@@ -523,16 +630,27 @@ export default function KakaoMap() {
 
     if (!selectedPlace) return;
 
-    const content = buildDetailCardElement(selectedPlace, detailAddress, () => setSelectedPlace(null));
+    const content = buildDetailCardElement(
+      selectedPlace,
+      detailAddress,
+      () => setSelectedPlace(null),
+    );
     const overlay = new window.kakao.maps.CustomOverlay({
       position: new window.kakao.maps.LatLng(selectedPlace.lat, selectedPlace.lng),
       content,
       xAnchor: 0,
       yAnchor: 0.5,
-      zIndex: 30,
+      zIndex: DETAIL_CARD_Z_INDEX,
     });
     overlay.setMap(mapInstanceRef.current);
     detailOverlayRef.current = overlay;
+    return () => {
+      overlay.setMap(null);
+      if (detailOverlayRef.current === overlay) {
+        detailOverlayRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPlace, detailAddress]);
 
   async function handleResearchClick() {
