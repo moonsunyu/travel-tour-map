@@ -5,6 +5,7 @@ import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { SearchSidebar } from "@/components/search/SearchSidebar";
 import { AuthProvider } from "@/context/AuthContext";
+import { BookmarkProvider } from "@/context/BookmarkContext";
 import { SearchSidebarProvider } from "@/context/SearchSidebarContext";
 import { KakaoScriptLoader } from "@/components/KakaoScriptLoader";
 import "./globals.css";
@@ -41,13 +42,15 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-[#F8F9FA] text-[#1E293B]">
         <KakaoScriptLoader />
         <AuthProvider>
-          <SearchSidebarProvider>
-            <Navbar />
-            <div className="flex-1 flex flex-col">{children}</div>
-            <AuthModal />
-            <SearchSidebar />
-            <Footer />
-          </SearchSidebarProvider>
+          <BookmarkProvider>
+            <SearchSidebarProvider>
+              <Navbar />
+              <div className="flex-1 flex flex-col">{children}</div>
+              <AuthModal />
+              <SearchSidebar />
+              <Footer />
+            </SearchSidebarProvider>
+          </BookmarkProvider>
         </AuthProvider>
       </body>
     </html>

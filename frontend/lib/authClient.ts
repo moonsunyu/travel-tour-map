@@ -18,7 +18,8 @@ export const DEFAULT_PROFILE_IMAGE =
 
 // 세션은 httpOnly 쿠키로 관리되므로 별도 토큰을 안 실어보내도 동일 출처 요청엔 자동으로 실린다.
 // status를 함께 반환해서, 같은 실패라도 401(로그인 필요)과 404(프로필 없음) 등을 화면에서 구분할 수 있게 한다.
-async function request<T>(path: string, options: RequestInit = {}): Promise<ApiResult<T>> {
+// request 함수를 다른 클라이언트 파일에서도 재사용할 수 있게 export 추가
+export async function request<T>(path: string, options: RequestInit = {}): Promise<ApiResult<T>> {
   try {
     const isFormData = options.body instanceof FormData;
     const res = await fetch(path, {

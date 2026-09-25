@@ -2,16 +2,22 @@
 
 import {
   AlertTriangle,
+  Bookmark,
   Camera,
   Check,
   Edit2,
+  Landmark,
   Lock,
   LogOut,
+  Star,
+  Utensils,
+  BedDouble,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { useBookmark } from "@/context/BookmarkContext";
 import { DEFAULT_PROFILE_IMAGE, validateNickname, validatePassword } from "@/lib/authClient";
 
 export const MyPage: React.FC = () => {
@@ -27,6 +33,13 @@ export const MyPage: React.FC = () => {
     checkNicknameAvailability,
     openTermsDetail,
   } = useAuth();
+  const { bookmarks, bookmarksLoading, removeBookmark } = useBookmark();
+
+  const CATEGORY_ICON: Record<string, typeof Utensils> = {
+    음식점: Utensils,
+    관광명소: Landmark,
+    숙박: BedDouble,
+  };
 
   const [isEditingNickname, setIsEditingNickname] = useState(false);
   const [newNickname, setNewNickname] = useState(user?.nickname || "");
@@ -328,6 +341,56 @@ export const MyPage: React.FC = () => {
       </div>
 
       <div className="space-y-6">
+        <div className="bg-white rounded-2xl p-6 border border-slate-200/80 space-y-4 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+              <Bookmark className="w-5 h-5 text-amber-500" />
+              <span>북마크한 장소</span>
+            </h3>
+            <span className="text-xs text-slate-400 font-medium">{bookmarks.length}곳</span>
+          </div>
+
+          {bookmarksLoading ? (
+            <div className="py-8 flex justify-center">
+              <div className="w-5 h-5 border-2 border-slate-200 border-t-sky-600 rounded-full animate-spin" />
+            </div>
+          ) : bookmarks.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-8">
+              아직 북마크한 장소가 없어요. 지도에서 마음에 드는 장소를 저장해보세요.
+            </p>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-3">
+              {bookmarks.map((bookmark) => {
+                const Icon = CATEGORY_ICON[bookmark.category ?? ""] ?? Landmark;
+                return (
+                  <div
+                    key={bookmark.spotId}
+                    className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 bg-slate-50"
+                  >
+                    <div className="w-10 h-10 shrink-0 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-sky-500">
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-800 truncate">{bookmark.spotName}</p>
+                      <p className="text-xs text-slate-500">
+                        {bookmark.region} · {bookmark.category ?? "장소"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeBookmark(bookmark.spotId)}
+                      className="p-1.5 text-amber-400 hover:text-slate-400 rounded-full cursor-pointer shrink-0"
+                      title="북마크 해제"
+                    >
+                      <Star className="w-4 h-4 fill-amber-400" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         <div className="bg-white rounded-2xl p-6 border border-slate-200/80 space-y-4 shadow-2xs">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
