@@ -19,6 +19,10 @@ interface BookmarkContextType {
   setShowBookmarkMarkers: (value: boolean) => void;
   bookmarkPlaces: DbPlace[]; // 좌표가 확인된 북마크 장소들
   bookmarkPlacesLoading: boolean;
+
+  // 북마크 목록/지도 마커 공통으로 쓰는 지역 필터
+   bookmarkRegionFilter: "전체" | PlaceRegion;
+   setBookmarkRegionFilter: (value: "전체" | PlaceRegion) => void;
 }
 
 const BookmarkContext = createContext<BookmarkContextType | undefined>(undefined);
@@ -31,6 +35,7 @@ export const BookmarkProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [showBookmarkMarkers, setShowBookmarkMarkers] = useState(false);
   const [bookmarkPlaces, setBookmarkPlaces] = useState<DbPlace[]>([]);
   const [bookmarkPlacesLoading, setBookmarkPlacesLoading] = useState(false);
+  const [bookmarkRegionFilter, setBookmarkRegionFilter] = useState<"전체" | PlaceRegion>("전체");
   const regionPlacesCacheRef = useRef<Map<PlaceRegion, DbPlace[]>>(new Map());
 
   useEffect(() => {
@@ -146,6 +151,8 @@ export const BookmarkProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setShowBookmarkMarkers,
         bookmarkPlaces,
         bookmarkPlacesLoading,
+        bookmarkRegionFilter,
+        setBookmarkRegionFilter,
       }}
     >
       {children}

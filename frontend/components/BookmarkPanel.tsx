@@ -29,12 +29,14 @@ export default function BookmarkPanel() {
     setShowBookmarkMarkers,
     bookmarkPlaces,
     bookmarkPlacesLoading,
+    bookmarkRegionFilter,
+    setBookmarkRegionFilter,
   } = useBookmark();
   const { setSelectedPlace, setMapFocusRequest } = useSearchSidebar();
 
   // 목록 열림/닫힘은 마커 표시와 별개로 관리 — 항목 클릭 시 목록만 닫고 마커는 유지
   const [isListOpen, setIsListOpen] = useState(false);
-  const [regionFilter, setRegionFilter] = useState<"전체" | PlaceRegion>("전체");
+  // const [regionFilter, setRegionFilter] = useState<"전체" | PlaceRegion>("전체");
 
   const handleToggle = () => {
     if (!user) {
@@ -55,7 +57,7 @@ export default function BookmarkPanel() {
   };
 
   const filteredBookmarks =
-    regionFilter === "전체" ? bookmarks : bookmarks.filter((b) => b.region === regionFilter);
+    bookmarkRegionFilter === "전체" ? bookmarks : bookmarks.filter((b) => b.region === bookmarkRegionFilter);
 
   return (
     <div className="absolute bottom-6 left-4 z-20">
@@ -77,9 +79,9 @@ export default function BookmarkPanel() {
               <button
                 key={r}
                 type="button"
-                onClick={() => setRegionFilter(r)}
+                onClick={() => setBookmarkRegionFilter(r)}
                 className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors cursor-pointer ${
-                  regionFilter === r
+                  bookmarkRegionFilter === r
                     ? "bg-sky-600 border-sky-600 text-white"
                     : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
                 }`}

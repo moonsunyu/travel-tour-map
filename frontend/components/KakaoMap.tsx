@@ -249,7 +249,7 @@ export default function KakaoMap() {
     placesLoading,
   } = useSearchSidebar();
   const kakaoReady = useKakaoReady();
-  const { showBookmarkMarkers, bookmarkPlaces, bookmarks } = useBookmark();
+  const { showBookmarkMarkers, bookmarkPlaces, bookmarks, bookmarkRegionFilter } = useBookmark();
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -724,8 +724,15 @@ export default function KakaoMap() {
 
     const regionById = new Map(bookmarks.map((b) => [b.spotId, b.region]));
 
+    const visiblePlaces =
+      bookmarkRegionFilter === "전체"
+        ? bookmarkPlaces
+       : bookmarkPlaces.filter((p) => regionById.get(p.id) === bookmarkRegionFilter);
+
+   if (visiblePlaces.length === 0) return;
+
     const bounds = new window.kakao.maps.LatLngBounds();
-    bookmarkPlaces.forEach((place) => {
+    visiblePlaces.forEach((place) => {
       const position = new window.kakao.maps.LatLng(place.lat, place.lng);
       const region = regionById.get(place.id) as PlaceRegion | undefined;
       const color = region ? REGION_OVERVIEW_COLOR[region] : "#FBBF24";
@@ -741,17 +748,17 @@ export default function KakaoMap() {
   if (!hasFitBookmarksOnceRef.current) {
      hasFitBookmarksOnceRef.current = true;
       markProgrammaticMove();
-      if (bookmarkPlaces.length === 1) {
+      if (visiblePlaces.length === 1) {
         mapInstanceRef.current.setLevel(4);
         mapInstanceRef.current.panTo(
-          new window.kakao.maps.LatLng(bookmarkPlaces[0].lat, bookmarkPlaces[0].lng),
+          new window.kakao.maps.LatLng(visiblePlaces[0].lat, visiblePlaces[0].lng),
         );
       } else {
         mapInstanceRef.current.setBounds(bounds);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [showBookmarkMarkers, bookmarkPlaces, bookmarks, kakaoReady]);
+    }, [showBookmarkMarkers, bookmarkPlaces, bookmarks, bookmarkRegionFilter, kakaoReady]);
 
   return (
     <div className="fixed inset-0">
