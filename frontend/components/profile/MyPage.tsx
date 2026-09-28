@@ -20,6 +20,12 @@ import { useAuth } from "@/context/AuthContext";
 import { useBookmark } from "@/context/BookmarkContext";
 import { DEFAULT_PROFILE_IMAGE, validateNickname, validatePassword } from "@/lib/authClient";
 
+const CATEGORY_ICON: Record<string, typeof Utensils> = {
+  음식점: Utensils,
+  관광명소: Landmark,
+  숙박: BedDouble,
+};
+
 export const MyPage: React.FC = () => {
   const router = useRouter();
   const {
@@ -34,12 +40,7 @@ export const MyPage: React.FC = () => {
     openTermsDetail,
   } = useAuth();
   const { bookmarks, bookmarksLoading, removeBookmark } = useBookmark();
-
-  const CATEGORY_ICON: Record<string, typeof Utensils> = {
-    음식점: Utensils,
-    관광명소: Landmark,
-    숙박: BedDouble,
-  };
+  const [bookmarkRegionFilter, setBookmarkRegionFilter] = useState<"전체" | "강원도" | "여수">("전체");
 
   const [isEditingNickname, setIsEditingNickname] = useState(false);
   const [newNickname, setNewNickname] = useState(user?.nickname || "");
@@ -63,8 +64,6 @@ export const MyPage: React.FC = () => {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // 로그인 상태 확인 전(초기 GET /api/profile 응답 대기 중)엔 "로그인 필요" 화면이
-  // 잠깐 깜빡이지 않도록 아무것도 표시하지 않는다.
   if (isLoading) {
     return (
       <div className="max-w-xl mx-auto my-16 flex items-center justify-center p-8">
@@ -208,6 +207,9 @@ export const MyPage: React.FC = () => {
 
   const avatarUrl = user.profileImageUrl || DEFAULT_PROFILE_IMAGE;
 
+  const filteredBookmarks =
+    bookmarkRegionFilter === "전체" ? bookmarks : bookmarks.filter((b) => b.region === bookmarkRegionFilter);
+
   return (
     <div id="mypage-view" className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8 animate-in fade-in duration-200">
       {/* Top Banner Card */}
@@ -341,14 +343,34 @@ export const MyPage: React.FC = () => {
       </div>
 
       <div className="space-y-6">
+        {/* 북마크한 장소 */}
         <div className="bg-white rounded-2xl p-6 border border-slate-200/80 space-y-4 shadow-2xs">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
               <Bookmark className="w-5 h-5 text-amber-500" />
               <span>북마크한 장소</span>
             </h3>
-            <span className="text-xs text-slate-400 font-medium">{bookmarks.length}곳</span>
+            <span className="text-xs text-slate-400 font-medium">{filteredBookmarks.length}곳</span>
           </div>
+
+          {bookmarks.length > 0 && (
+            <div className="flex gap-1.5">
+              {(["전체", "강원도", "여수"] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setBookmarkRegionFilter(r)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
+                    bookmarkRegionFilter === r
+                      ? "bg-sky-600 border-sky-600 text-white"
+                      : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          )}
 
           {bookmarksLoading ? (
             <div className="py-8 flex justify-center">
@@ -358,9 +380,11 @@ export const MyPage: React.FC = () => {
             <p className="text-sm text-slate-400 text-center py-8">
               아직 북마크한 장소가 없어요. 지도에서 마음에 드는 장소를 저장해보세요.
             </p>
+          ) : filteredBookmarks.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-8">이 지역에 북마크한 장소가 없어요.</p>
           ) : (
             <div className="grid sm:grid-cols-2 gap-3">
-              {bookmarks.map((bookmark) => {
+              {filteredBookmarks.map((bookmark) => {
                 const Icon = CATEGORY_ICON[bookmark.category ?? ""] ?? Landmark;
                 return (
                   <div
@@ -391,6 +415,7 @@ export const MyPage: React.FC = () => {
           )}
         </div>
 
+        {/* 보안 및 비밀번호 관리 */}
         <div className="bg-white rounded-2xl p-6 border border-slate-200/80 space-y-4 shadow-2xs">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
@@ -415,6 +440,7 @@ export const MyPage: React.FC = () => {
           </button>
         </div>
 
+        {/* 약관 동의 내역 */}
         <div className="bg-white rounded-2xl p-6 border border-slate-200 space-y-4">
           <div className="space-y-1">
             <h3 className="font-bold text-slate-900 text-base">서비스 약관 동의 내역</h3>
@@ -480,6 +506,7 @@ export const MyPage: React.FC = () => {
           </div>
         </div>
 
+        {/* 회원 탈퇴 */}
         <div className="bg-rose-50/40 rounded-2xl p-6 border border-rose-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <h4 className="text-sm font-bold text-rose-900 flex items-center gap-1.5">
@@ -553,7 +580,9 @@ export const MyPage: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700 block">새 비밀번호 (영문+숫자+특수문자 8자 이상)</label>
+                <label className="text-xs font-semibold text-slate-700 block">
+                  새 비밀번호 (영문+숫자+특수문자 8자 이상)
+                </label>
                 <input
                   id="new-password-input"
                   type="password"
