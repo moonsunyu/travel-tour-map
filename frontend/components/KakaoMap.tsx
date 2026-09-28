@@ -6,6 +6,8 @@ import { useSearchSidebar } from "@/context/SearchSidebarContext";
 import { DbPlace, PlaceCategory, PlaceRegion, fetchRegionTotals } from "@/lib/places";
 import { reverseGeocode } from "@/lib/kakaoGeocode";
 import MapControls from "@/components/MapControls";
+import BookmarkPanel from "@/components/BookmarkPanel";
+import { useBookmark } from "@/context/BookmarkContext";
 import { Loader2, LocateFixed, RefreshCw, Undo2 } from "lucide-react";
 
 const REGION_CENTER: Record<PlaceRegion, { lat: number; lng: number }> = {
@@ -101,6 +103,16 @@ function searchOriginMarkerImage() {
     </svg>`;
   const src = `data:image/svg+xml;base64,${btoa(svg)}`;
   return new window.kakao.maps.MarkerImage(src, new window.kakao.maps.Size(26, 26));
+}
+
+function bookmarkMarkerImage(color: string) {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34">
+      <circle cx="17" cy="17" r="15" fill="${color}" stroke="white" stroke-width="2.5"/>
+      <polygon points="17,8 19.35,14.26 26.03,14.56 20.8,18.74 22.58,25.19 17,21.5 11.42,25.19 13.2,18.74 7.97,14.56 14.65,14.26" fill="white"/>
+    </svg>`;
+  const src = `data:image/svg+xml;base64,${btoa(svg)}`;
+  return new window.kakao.maps.MarkerImage(src, new window.kakao.maps.Size(34, 34));
 }
 
 function categoryIconSvg(category: PlaceCategory) {
@@ -237,6 +249,7 @@ export default function KakaoMap() {
     placesLoading,
   } = useSearchSidebar();
   const kakaoReady = useKakaoReady();
+  const { showBookmarkMarkers, bookmarkPlaces, bookmarks, bookmarkRegionFilter } = useBookmark();
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -255,6 +268,9 @@ export default function KakaoMap() {
   // 장소 id → 마커 인스턴스 매핑 (선택된 장소의 마커를 찾아 z-index를 올리기 위함)
   const markersByIdRef = useRef<Map<string, any>>(new Map());
   const highlightedMarkerRef = useRef<any>(null);
+
+  const bookmarkMarkersRef = useRef<any[]>([]);
+  const hasFitBookmarksOnceRef = useRef(false);
 
   const isProgrammaticMoveRef = useRef(false);
   const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -696,10 +712,59 @@ export default function KakaoMap() {
 
   const showLoadingOverlay = !kakaoReady || (placesLoading && !hasShownResultsRef.current) || isRegionSwitching;
 
+
+  // 북마크한 장소 마커 (클러스터러와 별개로 직접 표시 — 검색 결과/지역이 바뀌어도 유지)
+  useEffect(() => {
+    if (!kakaoReady || !mapInstanceRef.current) return;
+
+    bookmarkMarkersRef.current.forEach((m) => m.setMap(null));
+    bookmarkMarkersRef.current = [];
+
+    if (!showBookmarkMarkers || bookmarkPlaces.length === 0) return;
+
+    const regionById = new Map(bookmarks.map((b) => [b.spotId, b.region]));
+
+    const visiblePlaces =
+      bookmarkRegionFilter === "전체"
+        ? bookmarkPlaces
+       : bookmarkPlaces.filter((p) => regionById.get(p.id) === bookmarkRegionFilter);
+
+   if (visiblePlaces.length === 0) return;
+
+    const bounds = new window.kakao.maps.LatLngBounds();
+    visiblePlaces.forEach((place) => {
+      const position = new window.kakao.maps.LatLng(place.lat, place.lng);
+      const region = regionById.get(place.id) as PlaceRegion | undefined;
+      const color = region ? REGION_OVERVIEW_COLOR[region] : "#FBBF24";
+      const marker = new window.kakao.maps.Marker({ position, image: bookmarkMarkerImage(color), zIndex: 5 });
+    
+      marker.setMap(mapInstanceRef.current);
+      attachHoverAndClick(marker, place);
+      bookmarkMarkersRef.current.push(marker);
+      bounds.extend(position);
+    });
+
+  // 세션 통틀어 "정말 처음" 북마크 마커를 보여줄 때만 화면을 맞추고, 이후로는 건드리지 않음
+  if (!hasFitBookmarksOnceRef.current) {
+     hasFitBookmarksOnceRef.current = true;
+      markProgrammaticMove();
+      if (visiblePlaces.length === 1) {
+        mapInstanceRef.current.setLevel(4);
+        mapInstanceRef.current.panTo(
+          new window.kakao.maps.LatLng(visiblePlaces[0].lat, visiblePlaces[0].lng),
+        );
+      } else {
+        mapInstanceRef.current.setBounds(bounds);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showBookmarkMarkers, bookmarkPlaces, bookmarks, bookmarkRegionFilter, kakaoReady]);
+
   return (
     <div className="fixed inset-0">
       <div ref={mapContainerRef} className="w-full h-full" />
       <MapControls />
+      <BookmarkPanel />
 
       {selectedRegion && showResearchButton && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2">
