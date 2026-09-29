@@ -200,20 +200,28 @@ export async function buildSingleModeResult(
     .eq('"SPOT_ID"', target.id)
     .maybeSingle();
 
-  const referenceSpot: ReferenceSpot = {
-    id: target.id,
-    name: target.name,
-    lat: target.lat,
-    lng: target.lng,
-    isHub: !!hubCheck,
-  };
+  // const referenceSpot: ReferenceSpot = {
+  //   id: target.id,
+  //   name: target.name,
+  //   lat: target.lat,
+  //   lng: target.lng,
+  //   isHub: !!hubCheck,
+  // };
 
   let centerSpotId = target.id;
+   let referenceSpot: ReferenceSpot = {
+     id: target.id,
+     name: target.name,
+     lat: target.lat,
+     lng: target.lng,
+     isHub: !!hubCheck,
+   };
 
   if (!hubCheck) {
     const { data: hubs } = await supabase
       .from(`T_${prefix}_SPOT`)
-      .select('"SPOT_ID","LATITUDE","LONGITUDE"')
+      //.select('"SPOT_ID","LATITUDE","LONGITUDE"')
+      .select('"SPOT_ID","SPOT_NAME","LATITUDE","LONGITUDE"')
       .not('"LATITUDE"', "is", null);
 
     const nearest = [...(hubs ?? [])].sort(
@@ -231,6 +239,14 @@ export async function buildSingleModeResult(
         soloRestaurants: pool.filter((p) => p.soloFriendly),
       };
     }
+     // 검색된 장소가 중심장소(hub)가 아니면, 기준 장소를 실제로 "가장 가까운 중심장소" 정보로 교체
+     referenceSpot = {
+       id: nearest.SPOT_ID,
+       name: nearest.SPOT_NAME,
+       lat: nearest.LATITUDE,
+       lng: nearest.LONGITUDE,
+       isHub: true,
+     };
   }
 
   const { data: relations } = await supabase

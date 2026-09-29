@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchSidebar } from "@/context/SearchSidebarContext";
 import { useAuth } from "@/context/AuthContext";
 import { useBookmark } from "@/context/BookmarkContext";
+import { reverseGeocode } from "@/lib/kakaoGeocode";
 import { haversineKm } from "@/lib/geo";
 import {
   AgeGroupFilter,
@@ -154,11 +155,28 @@ export const SearchSidebar: React.FC = () => {
     setMapSearchRequest(null);
   }, [selectedRegion, setMapSearchRequest]);
 
+  // 선택된 장소가 리스트 맨 위에 오도록 스크롤 (사이드바 슬라이드 애니메이션이 끝난 뒤 실행)
   useEffect(() => {
-    if (!selectedPlace) return;
-    const el = document.getElementById(`place-item-${selectedPlace.id}`);
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [selectedPlace]);
+    if (!isOpen || !selectedPlace) return;
+
+    const timer = setTimeout(() => {
+      const container = resultsScrollRef.current;
+      const targetEl = document.getElementById(`place-item-${selectedPlace.id}`);
+
+      if (container && targetEl) {
+        const targetTop = targetEl.getBoundingClientRect().top;
+        const containerTop = container.getBoundingClientRect().top;
+        const offset = targetTop - containerTop + container.scrollTop;
+
+        container.scrollTo({
+          top: offset - 8,
+          behavior: "smooth",
+        });
+      }
+    }, 220);
+
+    return () => clearTimeout(timer);
+  }, [isOpen, selectedPlace]);
 
   useEffect(() => {
     resultsScrollRef.current?.scrollTo({ top: 0 });
@@ -177,6 +195,7 @@ export const SearchSidebar: React.FC = () => {
     return () => el.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // 검색 및 정렬/필터 처리
   useEffect(() => {
     if (pool.length === 0) {
       setResults([]);
@@ -186,57 +205,61 @@ export const SearchSidebar: React.FC = () => {
 
     let cancelled = false;
 
-    function applySingleModeResult(
-      ref: { id: string; lat: number; lng: number },
-      relatedPlaces: DbPlace[],
-      soloRestaurants: DbPlace[],
-      sortOrigin: { lat: number; lng: number },
+    // 공통 정렬/필터 헬퍼
+    function sortAndFilterPlaces(
+      list: DbPlace[],
+      origin: { lat: number; lng: number } | null,
+      refId?: string,
     ): DbPlace[] {
+      let filtered = [...list];
+
+      // 기준점 자신이 원래 list(연관장소+혼밥식당)에 없다면, 카드 하나로 포함시킴
+     // (거리순/연관순위 둘 다 개수가 같아지도록)
+     if (refId) {
+       const alreadyIncluded = filtered.some((p) => p.id === refId);
+       if (!alreadyIncluded) {
+         const refCard = pool.find((p) => p.id === refId);
+         if (refCard) filtered = [refCard, ...filtered];
+       }
+     }
+
+      if (selectedCategory === "음식점") {
+        filtered = filtered.filter((p) => p.category === "음식점");
+      } else if (selectedCategory === "관광명소") {
+        filtered = filtered.filter((p) => p.category !== "음식점" && p.category !== "숙박");
+      } else if (selectedCategory === "숙박") {
+        filtered = filtered.filter((p) => p.category === "숙박");
+      }
+
       if (soloOnly) {
-        return [...soloRestaurants].sort(
-          (a, b) =>
-            haversineKm(a.lat, a.lng, sortOrigin.lat, sortOrigin.lng) -
-            haversineKm(b.lat, b.lng, sortOrigin.lat, sortOrigin.lng),
-        );
+        filtered = filtered.filter((p) => p.soloFriendly);
       }
-
-      let combined: DbPlace[];
-      if (sortBy === "연관순위") {
-        const soloSorted = [...soloRestaurants].sort(
-          (a, b) =>
-            haversineKm(a.lat, a.lng, sortOrigin.lat, sortOrigin.lng) -
-            haversineKm(b.lat, b.lng, sortOrigin.lat, sortOrigin.lng),
-        );
-        combined = [...relatedPlaces, ...soloSorted];
-      } else {
-        combined = [...relatedPlaces, ...soloRestaurants].sort(
-          (a, b) =>
-            haversineKm(a.lat, a.lng, sortOrigin.lat, sortOrigin.lng) -
-            haversineKm(b.lat, b.lng, sortOrigin.lat, sortOrigin.lng),
-        );
-      }
-
-      let filtered = combined;
-      if (selectedCategory === "음식점") filtered = combined.filter((p) => p.category === "음식점");
-      else if (selectedCategory === "관광명소")
-        filtered = combined.filter((p) => p.category !== "음식점" && p.category !== "숙박");
-      else if (selectedCategory === "숙박") filtered = combined.filter((p) => p.category === "숙박");
 
       if (ageGroup !== "선택 안함") {
         filtered = filtered.filter((p) => p.ageGroups.includes(ageGroup));
       }
 
-      const refCard = pool.find((p) => p.id === ref.id);
-      if (refCard) {
-        const categoryOk =
-          selectedCategory === "전체" ||
-          (selectedCategory === "관광명소"
-            ? refCard.category !== "음식점" && refCard.category !== "숙박"
-            : refCard.category === selectedCategory);
-        const ageOk = ageGroup === "선택 안함" || refCard.ageGroups.includes(ageGroup);
-        if (categoryOk && ageOk) {
-          filtered = [refCard, ...filtered.filter((p) => p.id !== ref.id)];
-        }
+      if (sortBy === "거리순" && origin) {
+        // 거리순: 기준점을 억지로 맨 위에 고정하지 않고, 지정된 위치(origin) 기준 가까운 순 그대로
+        filtered.sort(
+          (a, b) =>
+            haversineKm(a.lat, a.lng, origin.lat, origin.lng) -
+            haversineKm(b.lat, b.lng, origin.lat, origin.lng),
+        );
+      // } else if (sortBy === "연관순위" && refId) {
+      //   // 연관순위: 기준 장소를 맨 위에 고정
+      //   const refCard = pool.find((p) => p.id === refId);
+      //   if (refCard) {
+      //     filtered = [refCard, ...filtered.filter((p) => p.id !== refId)];
+      //   }
+           } else if (sortBy === "연관순위") {
+       // 연관순위: 이미 위에서 리스트에 포함된 기준점을 맨 위로 고정
+       if (refId) {
+         const refCard = filtered.find((p) => p.id === refId);
+         if (refCard) {
+           filtered = [refCard, ...filtered.filter((p) => p.id !== refId)];
+         }
+       }
       }
 
       return filtered;
@@ -245,6 +268,7 @@ export const SearchSidebar: React.FC = () => {
     async function processSearch() {
       setSearching(true);
 
+      // 케이스 1: 현 지도/내 위치/이 장소로 검색 (좌표 기반)
       if (mapSearchRequest && selectedRegion) {
         const result = await searchFromCoordinates(mapSearchRequest.lat, mapSearchRequest.lng, selectedRegion, pool);
         if (cancelled) return;
@@ -257,12 +281,13 @@ export const SearchSidebar: React.FC = () => {
         }
 
         setReferenceSpot(result.referenceSpot);
-        const filtered = applySingleModeResult(
-          result.referenceSpot,
-          result.relatedPlaces,
-          result.soloRestaurants,
-          { lat: mapSearchRequest.lat, lng: mapSearchRequest.lng },
-        );
+
+        const combined = [...result.relatedPlaces, ...result.soloRestaurants];
+        const uniquePlaces = Array.from(new Map(combined.map((p) => [p.id, p])).values());
+
+        const searchOrigin = { lat: mapSearchRequest.lat, lng: mapSearchRequest.lng };
+        const filtered = sortAndFilterPlaces(uniquePlaces, searchOrigin, result.referenceSpot.id);
+
         if (!cancelled) {
           setResults(filtered);
           setSearching(false);
@@ -270,18 +295,11 @@ export const SearchSidebar: React.FC = () => {
         return;
       }
 
+      // 케이스 2: 검색어 없는 일반 탐색
       if (!submittedQuery) {
-        let filtered = pool;
-        if (selectedCategory === "음식점") filtered = pool.filter((p) => p.category === "음식점");
-        else if (selectedCategory === "관광명소")
-          filtered = pool.filter((p) => p.category !== "음식점" && p.category !== "숙박");
-        else if (selectedCategory === "숙박") filtered = pool.filter((p) => p.category === "숙박");
-
-        if (soloOnly) filtered = pool.filter((p) => p.soloFriendly);
-        if (ageGroup !== "선택 안함") filtered = filtered.filter((p) => p.ageGroups.includes(ageGroup));
-
+        setReferenceSpot(null);
+        const filtered = sortAndFilterPlaces(pool, null);
         if (!cancelled) {
-          setReferenceSpot(null);
           setResults(filtered);
           setSearching(false);
         }
@@ -289,7 +307,6 @@ export const SearchSidebar: React.FC = () => {
       }
 
       if (!selectedRegion) {
-        // "전체" 지역에서는 좌표검색 외의 텍스트 검색은 카카오 지역 접두어가 필요해 비워둠
         if (!cancelled) {
           setResults([]);
           setSearching(false);
@@ -297,6 +314,7 @@ export const SearchSidebar: React.FC = () => {
         return;
       }
 
+      // 케이스 3: 텍스트 검색어
       const result = await searchAndGetResults(submittedQuery, selectedRegion, pool);
       if (cancelled) return;
 
@@ -309,16 +327,7 @@ export const SearchSidebar: React.FC = () => {
 
       if (result.mode === "keyword") {
         setReferenceSpot(null);
-
-        let filtered = result.matches;
-        if (selectedCategory === "음식점") filtered = filtered.filter((p) => p.category === "음식점");
-        else if (selectedCategory === "관광명소")
-          filtered = filtered.filter((p) => p.category !== "음식점" && p.category !== "숙박");
-        else if (selectedCategory === "숙박") filtered = filtered.filter((p) => p.category === "숙박");
-
-        if (soloOnly) filtered = result.matches.filter((p) => p.soloFriendly);
-        if (ageGroup !== "선택 안함") filtered = filtered.filter((p) => p.ageGroups.includes(ageGroup));
-
+        const filtered = sortAndFilterPlaces(result.matches, null);
         if (!cancelled) {
           setResults(filtered);
           setSearching(false);
@@ -328,7 +337,13 @@ export const SearchSidebar: React.FC = () => {
 
       const ref = result.referenceSpot;
       setReferenceSpot(ref);
-      const filtered = applySingleModeResult(ref, result.relatedPlaces, result.soloRestaurants, ref);
+
+      const combined = [...result.relatedPlaces, ...result.soloRestaurants];
+      const uniquePlaces = Array.from(new Map(combined.map((p) => [p.id, p])).values());
+
+      const searchOrigin = { lat: ref.lat, lng: ref.lng };
+      const filtered = sortAndFilterPlaces(uniquePlaces, searchOrigin, ref.id);
+
       if (!cancelled) {
         setResults(filtered);
         setSearching(false);
@@ -351,6 +366,13 @@ export const SearchSidebar: React.FC = () => {
     setSearchNonce((n) => n + 1);
   };
 
+  // "이 장소로 검색" — 좌표 기반 검색 경로를 태워서, 검색창엔 주소가 자동으로 채워지고
+  // 결과 리스트엔 "기준점에서의 거리"뿐 아니라 "검색 위치(이 장소)에서의 거리"도 같이 뜨게 함
+  const handleSearchByPlace = async (place: DbPlace) => {
+    const label = await reverseGeocode(place.lat, place.lng);
+    setMapSearchRequest({ lat: place.lat, lng: place.lng, label: `현 검색 위치: ${label}` });
+  };
+
   const handleClearQuery = () => {
     setQuery("");
     setSubmittedQuery("");
@@ -368,8 +390,8 @@ export const SearchSidebar: React.FC = () => {
   return (
     <>
       <div
-        className={`fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-200 ${
-          isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          className={`fixed inset-0 z-40 transition-opacity duration-200 ${
+            isOpen ? "pointer-events-auto" : "pointer-events-none hidden"
         }`}
         onClick={closeSearchSidebar}
       />
@@ -411,9 +433,8 @@ export const SearchSidebar: React.FC = () => {
                     type="button"
                     onClick={() => setSelectedRegion(opt.region)}
                     className={`${
-                     opt.region === null ? "w-16 shrink-0" : "flex-1"
-                   } px-3 py-2 rounded-xl text-sm font-semibold border transition-colors cursor-pointer ${
-                     
+                      opt.region === null ? "w-16 shrink-0" : "flex-1"
+                    } px-3 py-2 rounded-xl text-sm font-semibold border transition-colors cursor-pointer ${
                       selectedRegion === opt.region
                         ? "bg-sky-600 border-sky-600 text-white"
                         : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
@@ -648,10 +669,7 @@ export const SearchSidebar: React.FC = () => {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setMapSearchRequest(null);
-                                setQuery(place.name);
-                                setSubmittedQuery(place.name);
-                                setSearchNonce((n) => n + 1);
+                                handleSearchByPlace(place);
                               }}
                               className="shrink-0 text-[10px] text-slate-400 hover:text-sky-600 cursor-pointer whitespace-nowrap"
                             >
@@ -660,10 +678,16 @@ export const SearchSidebar: React.FC = () => {
                           </div>
                           <p className="text-xs text-slate-500">
                             <span>{place.category}</span>
-                            {walkMinutes !== null && <span> · 기준점에서 도보 약 {walkMinutes}분</span>}
+                            {walkMinutes !== null && (
+                              <span>
+                                {" "}· <strong className="font-semibold text-slate-700">기준점</strong>에서 도보 약 {walkMinutes}분
+                              </span>
+                            )}
                           </p>
                           {originWalkMinutes !== null && (
-                            <p className="text-xs text-slate-400">검색 위치에서 도보 약 {originWalkMinutes}분</p>
+                            <p className="text-xs text-slate-400">
+                              <strong className="font-semibold text-slate-600">검색 위치</strong>에서 도보 약 {originWalkMinutes}분
+                            </p>
                           )}
                         </div>
 
