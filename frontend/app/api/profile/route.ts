@@ -24,7 +24,12 @@ export async function GET() {
   }
 
   return apiSuccess(
-    { email: user.email, nickname: data.NICKNAME, profileImageUrl: data.PROFILE_IMAGE_URL },
+    {
+      email: user.email,
+      nickname: data.NICKNAME,
+      profileImageUrl: data.PROFILE_IMAGE_URL,
+      provider: user.app_metadata?.provider ?? "email",
+    },
     "프로필 조회 성공",
   );
 }

@@ -415,30 +415,32 @@ export const MyPage: React.FC = () => {
           )}
         </div>
 
-        {/* 보안 및 비밀번호 관리 */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200/80 space-y-4 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
-              <Lock className="w-5 h-5 text-amber-600" />
-              <span>보안 및 비밀번호 관리</span>
-            </h3>
-            <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
-              안전
-            </span>
+        {/* 보안 및 비밀번호 관리: 구글 로그인 계정은 비밀번호 자체가 없어 숨김 */}
+        {user?.provider !== "google" && (
+          <div className="bg-white rounded-2xl p-6 border border-slate-200/80 space-y-4 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+                <Lock className="w-5 h-5 text-amber-600" />
+                <span>보안 및 비밀번호 관리</span>
+              </h3>
+              <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
+                안전
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              소중한 혼여행 기록과 개인정보를 안전하게 보호하기 위해 주기적으로 비밀번호를 변경해 주세요.
+            </p>
+            <button
+              id="open-password-change-btn"
+              type="button"
+              onClick={() => setShowPasswordModal(true)}
+              className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-sm rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Lock className="w-4 h-4 text-slate-600" />
+              <span>비밀번호 변경하기</span>
+            </button>
           </div>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            소중한 혼여행 기록과 개인정보를 안전하게 보호하기 위해 주기적으로 비밀번호를 변경해 주세요.
-          </p>
-          <button
-            id="open-password-change-btn"
-            type="button"
-            onClick={() => setShowPasswordModal(true)}
-            className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-sm rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2"
-          >
-            <Lock className="w-4 h-4 text-slate-600" />
-            <span>비밀번호 변경하기</span>
-          </button>
-        </div>
+        )}
 
         {/* 약관 동의 내역 */}
         <div className="bg-white rounded-2xl p-6 border border-slate-200 space-y-4">
