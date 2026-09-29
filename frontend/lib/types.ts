@@ -44,6 +44,7 @@ export interface ProfileData {
   email: string;
   nickname: string;
   profileImageUrl: string | null;
+  provider: string;
 }
 
 export interface NicknameCheckData {
