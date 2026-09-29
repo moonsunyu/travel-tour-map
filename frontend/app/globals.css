@@ -19,6 +19,12 @@
   }
 }
 
+html {
+  /* 페이지마다 세로 스크롤바 유무가 달라 콘텐츠 너비가 바뀌면서 가운데 정렬된
+     레이아웃(Navbar 등)이 좌우로 미세하게 밀리는 것을 방지 — 스크롤바 공간을 항상 예약 */
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
