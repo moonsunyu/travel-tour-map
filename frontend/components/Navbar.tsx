@@ -1,6 +1,6 @@
 "use client";
 
-import { LogIn, LogOut, Menu, UserPlus } from "lucide-react";
+import { ArrowLeft, LogIn, LogOut, Menu, UserPlus } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -21,16 +21,28 @@ export const Navbar: React.FC = () => {
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 transition-all">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          {/* Menu Button: 클릭 시 왼쪽 사이드바 오픈 */}
-          <button
-            id="nav-menu-btn"
-            type="button"
-            onClick={openSearchSidebar}
-            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-            title="메뉴"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+          {/* 마이페이지에서는 뒤로가기 화살표, 그 외 페이지에서는 검색 사이드바를 여는 메뉴 버튼 */}
+          {isMyPage ? (
+            <button
+              id="nav-back-btn"
+              type="button"
+              onClick={() => router.push("/")}
+              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              title="뒤로가기"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          ) : (
+            <button
+              id="nav-menu-btn"
+              type="button"
+              onClick={openSearchSidebar}
+              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              title="메뉴"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
 
           {/* Brand Logo */}
           <Link id="navbar-logo" href="/" className="flex items-center gap-2.5 cursor-pointer text-left group">
