@@ -25,6 +25,7 @@ interface SearchSidebarContextType {
 
   mapSearchRequest: { lat: number; lng: number; label: string } | null;
   setMapSearchRequest: (req: { lat: number; lng: number; label: string } | null) => void;
+  
 
   placesLoading: boolean;
   setPlacesLoading: (loading: boolean) => void;

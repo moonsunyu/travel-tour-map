@@ -120,25 +120,120 @@ function categoryIconSvg(category: PlaceCategory) {
 }
 
 /** 상세카드 DOM 생성. 주소는 한 줄로 말줄임(...) 처리, 장소명은 링크처럼 클릭 가능 */
+// function buildDetailCardElement(
+//   place: DbPlace,
+//   address: string | null,
+//   onClose: () => void,
+//   onNameClick: () => void,
+// ): HTMLDivElement {
+//   const wrapper = document.createElement("div");
+//   wrapper.style.marginLeft = "14px";
+//   wrapper.style.width = "288px";
+//   wrapper.className = "bg-white rounded-2xl shadow-2xl border border-slate-200/80 p-4 relative";
+
+//   const closeBtn = document.createElement("button");
+//   closeBtn.className =
+//     "absolute top-2 right-2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full cursor-pointer";
+//   closeBtn.innerHTML =
+//     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+//   closeBtn.onclick = (e) => {
+//     e.stopPropagation();
+//     onClose();
+//   };
+//   wrapper.appendChild(closeBtn);
+
+//   const row = document.createElement("div");
+//   row.className = "flex gap-3";
+
+//   const iconBox = document.createElement("div");
+//   iconBox.className = `w-11 h-11 shrink-0 rounded-xl flex items-center justify-center ${CATEGORY_CARD_ICON_CLASS[place.category]}`;
+//   iconBox.innerHTML = categoryIconSvg(place.category);
+//   row.appendChild(iconBox);
+
+//   const metaCol = document.createElement("div");
+//   metaCol.className = "flex-1 min-w-0 space-y-1 pr-4";
+
+//   const nameRow = document.createElement("div");
+//   nameRow.className = "relative flex items-center gap-1.5";
+
+//   const nameEl = document.createElement("h3");
+//   nameEl.className = "text-sm font-bold text-slate-900 truncate hover:text-sky-600 hover:underline transition-colors cursor-pointer";
+//     nameEl.textContent = place.name;
+//    nameEl.onclick = (e) => {
+//      e.stopPropagation();
+//      onNameClick();
+//    };
+
+//   nameEl.textContent = place.name;
+//   nameRow.appendChild(nameEl);
+
+//   const hoverTip = document.createElement("div");
+//   hoverTip.className =
+//     "absolute -top-8 left-0 px-2.5 py-1 rounded-full bg-slate-900 text-white text-[10px] font-medium shadow-lg whitespace-nowrap opacity-0 pointer-events-none transition-opacity duration-150";
+//   hoverTip.textContent = "클릭해서 사이드바 열기";
+//   nameRow.appendChild(hoverTip);
+
+//   nameEl.addEventListener("mouseenter", () => {
+//     hoverTip.style.opacity = "1";
+//   });
+//   nameEl.addEventListener("mouseleave", () => {
+//     hoverTip.style.opacity = "0";
+//   });
+
+//   metaCol.appendChild(nameRow);
+
+//   const categoryRow = document.createElement("p");
+//   categoryRow.className = "text-xs text-slate-500 flex items-center gap-1.5";
+//   categoryRow.innerHTML = `
+//       <span>${place.category}</span>
+//       ${place.soloFriendly
+//       ? '<span class="px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-semibold">혼밥 가능</span>'
+//       : ""
+//     }
+//     `;
+//   metaCol.appendChild(categoryRow);
+
+//   const addressRow = document.createElement("p");
+//   addressRow.className = "text-xs text-slate-500 truncate";
+//   addressRow.title = address ?? "";
+//   addressRow.textContent = address ?? "주소 불러오는 중...";
+//   metaCol.appendChild(addressRow);
+
+//   row.appendChild(metaCol);
+//   wrapper.appendChild(row);
+
+//   wrapper.onclick = (e) => e.stopPropagation();
+
+//   return wrapper;
+// }
+
+// components/KakaoMap.tsx
+
 function buildDetailCardElement(
   place: DbPlace,
   address: string | null,
   onClose: () => void,
+  onNameClick: () => void,
 ): HTMLDivElement {
   const wrapper = document.createElement("div");
   wrapper.style.marginLeft = "14px";
   wrapper.style.width = "288px";
   wrapper.className = "bg-white rounded-2xl shadow-2xl border border-slate-200/80 p-4 relative";
 
+  // 지도 드래그/클릭이 카드 내부로 전파되는 것 차단
+  wrapper.addEventListener("mousedown", (e) => e.stopPropagation());
+  wrapper.addEventListener("click", (e) => e.stopPropagation());
+
   const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
   closeBtn.className =
     "absolute top-2 right-2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full cursor-pointer";
   closeBtn.innerHTML =
     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-  closeBtn.onclick = (e) => {
+  closeBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     onClose();
-  };
+  });
   wrapper.appendChild(closeBtn);
 
   const row = document.createElement("div");
@@ -155,15 +250,26 @@ function buildDetailCardElement(
   const nameRow = document.createElement("div");
   nameRow.className = "relative flex items-center gap-1.5";
 
+  // 🌟 [수정 부분]: 장소명 클릭 시 사이드바 열기 연결
   const nameEl = document.createElement("h3");
-  nameEl.className = "text-sm font-bold text-slate-900 truncate hover:text-sky-600 transition-colors cursor-default";
+  nameEl.className =
+    "text-sm font-bold text-slate-900 truncate hover:text-sky-600 hover:underline transition-colors cursor-pointer select-none";
   nameEl.textContent = place.name;
+
+  // mousedown 및 click 둘 다 stopPropagation 하여 지도로 클릭이 새어 나가지 않도록 함
+  nameEl.addEventListener("mousedown", (e) => e.stopPropagation());
+  nameEl.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onNameClick();
+  });
+
   nameRow.appendChild(nameEl);
 
   const hoverTip = document.createElement("div");
   hoverTip.className =
-    "absolute -top-8 left-0 px-2.5 py-1 rounded-full bg-slate-900 text-white text-[10px] font-medium shadow-lg whitespace-nowrap opacity-0 pointer-events-none transition-opacity duration-150";
-  hoverTip.textContent = "사이드바를 열어보세요!";
+    "absolute -top-8 left-0 px-2.5 py-1 rounded-full bg-slate-900 text-white text-[10px] font-medium shadow-lg whitespace-nowrap opacity-0 pointer-events-none transition-opacity duration-150 z-10";
+  hoverTip.textContent = "클릭해서 사이드바 열기";
   nameRow.appendChild(hoverTip);
 
   nameEl.addEventListener("mouseenter", () => {
@@ -179,10 +285,11 @@ function buildDetailCardElement(
   categoryRow.className = "text-xs text-slate-500 flex items-center gap-1.5";
   categoryRow.innerHTML = `
       <span>${place.category}</span>
-      ${place.soloFriendly
-      ? '<span class="px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-semibold">혼밥 가능</span>'
-      : ""
-    }
+      ${
+        place.soloFriendly
+          ? '<span class="px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-semibold">혼밥 가능</span>'
+          : ""
+      }
     `;
   metaCol.appendChild(categoryRow);
 
@@ -194,8 +301,6 @@ function buildDetailCardElement(
 
   row.appendChild(metaCol);
   wrapper.appendChild(row);
-
-  wrapper.onclick = (e) => e.stopPropagation();
 
   return wrapper;
 }
@@ -236,6 +341,7 @@ function useKakaoReady(): boolean {
 
 export default function KakaoMap() {
   const {
+    isOpen,
     results,
     referenceSpot,
     selectedRegion,
@@ -248,6 +354,9 @@ export default function KakaoMap() {
     mapFocusRequest,
     placesLoading,
   } = useSearchSidebar();
+
+  const prevIsOpenRef = useRef(isOpen);
+
   const kakaoReady = useKakaoReady();
   const { showBookmarkMarkers, bookmarkPlaces, bookmarks, bookmarkRegionFilter } = useBookmark();
 
@@ -301,45 +410,45 @@ export default function KakaoMap() {
     overviewOverlaysRef.current = [];
   }
 
-  function attachHoverAndClick(marker: any, place: DbPlace) {
-    window.kakao.maps.event.addListener(marker, "mouseover", () => {
-      if (hoverOverlayRef.current) hoverOverlayRef.current.setMap(null);
+  // function attachHoverAndClick(marker: any, place: DbPlace) {
+  //   window.kakao.maps.event.addListener(marker, "mouseover", () => {
+  //     if (hoverOverlayRef.current) hoverOverlayRef.current.setMap(null);
 
-      const content = document.createElement("div");
-      content.style.transform = "translate(-50%, -140%)";
-      content.className =
-        "px-2.5 py-1 rounded-full bg-slate-900 text-white text-xs font-medium shadow-lg whitespace-nowrap";
-      content.textContent = `${place.name} · ${place.category}`;
+  //     const content = document.createElement("div");
+  //     content.style.transform = "translate(-50%, -140%)";
+  //     content.className =
+  //       "px-2.5 py-1 rounded-full bg-slate-900 text-white text-xs font-medium shadow-lg whitespace-nowrap";
+  //     content.textContent = `${place.name} · ${place.category}`;
 
-      const overlay = new window.kakao.maps.CustomOverlay({
-        position: marker.getPosition(),
-        content,
-        zIndex: 20,
-      });
-      overlay.setMap(mapInstanceRef.current);
-      hoverOverlayRef.current = overlay;
-    });
+  //     const overlay = new window.kakao.maps.CustomOverlay({
+  //       position: marker.getPosition(),
+  //       content,
+  //       zIndex: 20,
+  //     });
+  //     overlay.setMap(mapInstanceRef.current);
+  //     hoverOverlayRef.current = overlay;
+  //   });
 
-    window.kakao.maps.event.addListener(marker, "mouseout", () => {
-      if (hoverOverlayRef.current) {
-        hoverOverlayRef.current.setMap(null);
-        hoverOverlayRef.current = null;
-      }
-    });
+  //   window.kakao.maps.event.addListener(marker, "mouseout", () => {
+  //     if (hoverOverlayRef.current) {
+  //       hoverOverlayRef.current.setMap(null);
+  //       hoverOverlayRef.current = null;
+  //     }
+  //   });
 
-    window.kakao.maps.event.addListener(marker, "click", () => {
-      justClickedMarkerRef.current = true;
-      setSelectedPlace(place);
+  //   window.kakao.maps.event.addListener(marker, "click", () => {
+  //     justClickedMarkerRef.current = true;
+  //     setSelectedPlace(place);
 
-      // 마커 클릭 시 지도를 부드럽게 그 위치로 이동 (확대/사이드바는 그대로)
-      markProgrammaticMove();
-      mapInstanceRef.current?.panTo(marker.getPosition());
+  //     // 마커 클릭 시 지도를 부드럽게 그 위치로 이동 (확대/사이드바는 그대로)
+  //     markProgrammaticMove();
+  //     mapInstanceRef.current?.panTo(marker.getPosition());
 
-      setTimeout(() => {
-        justClickedMarkerRef.current = false;
-      }, 0);
-    });
-  }
+  //     setTimeout(() => {
+  //       justClickedMarkerRef.current = false;
+  //     }, 0);
+  //   });
+  // }
 
   // 지도 최초 생성
   useEffect(() => {
@@ -608,7 +717,14 @@ export default function KakaoMap() {
    * kakao의 Projection(좌표↔화면픽셀 변환)을 이용해, 마커의 화면상 x좌표가
    * 원하는 위치(사이드바 폭 + 여백)에 오도록 지도 중심 좌표를 재계산.
    */
+
+  const preSidebarCenterRef = useRef<any>(null);
+
   function handleOpenSidebarFromCard() {
+    if (mapInstanceRef.current) {
+      preSidebarCenterRef.current = mapInstanceRef.current.getCenter(); // 열리기 전 중심 저장
+    }
+
     openSearchSidebar();
 
     requestAnimationFrame(() => {
@@ -635,6 +751,130 @@ export default function KakaoMap() {
     });
   }
 
+  // 닫힐 때 복귀 로직
+  useEffect(() => {
+    const wasOpen = prevIsOpenRef.current;
+    prevIsOpenRef.current = isOpen;
+
+    if (wasOpen && !isOpen && preSidebarCenterRef.current) {
+      markProgrammaticMove();
+      mapInstanceRef.current?.panTo(preSidebarCenterRef.current);
+      preSidebarCenterRef.current = null;
+    }
+  }, [isOpen]);
+
+  // 선택된 장소 옆에 상세카드(CustomOverlay) 표시
+  
+  function handleFocusAndOpenSidebar(place: DbPlace) {
+    setSelectedPlace(place);
+    openSearchSidebar();
+
+    requestAnimationFrame(() => {
+      const map = mapInstanceRef.current;
+      if (!map || !mapContainerRef.current) return;
+
+      const projection = map.getProjection();
+      const markerPos = new window.kakao.maps.LatLng(place.lat, place.lng);
+      const markerPoint = projection.containerPointFromCoords(markerPos);
+
+      const viewportWidth = mapContainerRef.current.clientWidth;
+      const groupWidth = MARKER_ICON_HALF_PX * 2 + CARD_GAP_PX + CARD_WIDTH_PX;
+      const gap = Math.max(16, (viewportWidth - SIDEBAR_WIDTH_PX - groupWidth) / 2);
+      const desiredX = SIDEBAR_WIDTH_PX + gap + MARKER_ICON_HALF_PX;
+      const deltaX = desiredX - markerPoint.x;
+
+      const centerPoint = projection.containerPointFromCoords(map.getCenter());
+      const targetPoint = new window.kakao.maps.Point(centerPoint.x - deltaX, centerPoint.y);
+      const targetCoords = projection.coordsFromContainerPoint(targetPoint);
+
+      markProgrammaticMove();
+      map.panTo(targetCoords);
+    });
+  }
+
+  function attachHoverAndClick(marker: any, place: DbPlace) {
+    window.kakao.maps.event.addListener(marker, "mouseover", () => {
+      if (hoverOverlayRef.current) hoverOverlayRef.current.setMap(null);
+
+      const content = document.createElement("div");
+      content.style.transform = "translate(-50%, -140%)";
+      content.className =
+        "px-2.5 py-1 rounded-full bg-slate-900 text-white text-xs font-medium shadow-lg whitespace-nowrap";
+      content.textContent = `${place.name} · ${place.category}`;
+
+      const overlay = new window.kakao.maps.CustomOverlay({
+        position: marker.getPosition(),
+        content,
+        zIndex: 20,
+      });
+      overlay.setMap(mapInstanceRef.current);
+      hoverOverlayRef.current = overlay;
+    });
+
+    window.kakao.maps.event.addListener(marker, "mouseout", () => {
+      if (hoverOverlayRef.current) {
+        hoverOverlayRef.current.setMap(null);
+        hoverOverlayRef.current = null;
+      }
+    });
+
+    // 🌟 마커를 클릭했을 때 바로 사이드바를 열고 중심을 맞춤
+    // window.kakao.maps.event.addListener(marker, "click", () => {
+    //   justClickedMarkerRef.current = true;
+    //   handleFocusAndOpenSidebar(place);
+
+    //   setTimeout(() => {
+    //     justClickedMarkerRef.current = false;
+    //   }, 0);
+    // });
+
+    window.kakao.maps.event.addListener(marker, "click", () => {
+      justClickedMarkerRef.current = true;
+      setSelectedPlace(place); // 마커 클릭 시에는 상세 카드만 뜸
+
+      markProgrammaticMove();
+      mapInstanceRef.current?.panTo(marker.getPosition());
+
+      setTimeout(() => {
+        justClickedMarkerRef.current = false;
+      }, 0);
+    });
+  }
+
+  // useEffect(() => {
+  //   if (!mapInstanceRef.current) return;
+
+  //   if (detailOverlayRef.current) {
+  //     detailOverlayRef.current.setMap(null);
+  //     detailOverlayRef.current = null;
+  //   }
+
+  //   if (!selectedPlace) return;
+
+  //   const content = buildDetailCardElement(
+  //     selectedPlace,
+  //     detailAddress,
+  //     () => setSelectedPlace(null),
+  //     handleOpenSidebarFromCard,
+  //   );
+  //   const overlay = new window.kakao.maps.CustomOverlay({
+  //     position: new window.kakao.maps.LatLng(selectedPlace.lat, selectedPlace.lng),
+  //     content,
+  //     xAnchor: 0,
+  //     yAnchor: 0.5,
+  //     zIndex: DETAIL_CARD_Z_INDEX,
+  //   });
+  //   overlay.setMap(mapInstanceRef.current);
+  //   detailOverlayRef.current = overlay;
+  //   return () => {
+  //     overlay.setMap(null);
+  //     if (detailOverlayRef.current === overlay) {
+  //       detailOverlayRef.current = null;
+  //     }
+  //   };
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [selectedPlace, detailAddress]);
+
   // 선택된 장소 옆에 상세카드(CustomOverlay) 표시
   useEffect(() => {
     if (!mapInstanceRef.current) return;
@@ -650,6 +890,7 @@ export default function KakaoMap() {
       selectedPlace,
       detailAddress,
       () => setSelectedPlace(null),
+      handleOpenSidebarFromCard, // 카드 제목 클릭 시 재동작
     );
     const overlay = new window.kakao.maps.CustomOverlay({
       position: new window.kakao.maps.LatLng(selectedPlace.lat, selectedPlace.lng),
